@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Union, Tuple
+from types import SimpleNamespace
 
 import numpy as np
 import rasterio
@@ -14,9 +15,6 @@ class Raster:
 
         if not self.ds.is_tiled:
             raise ValueError("Input raster should be tiled")
-
-        self.data = None
-        self.current_window = None
 
     def __enter__(self) -> DatasetReader:
         return self
@@ -48,19 +46,21 @@ class Raster:
     def csy(self):
         return self.ds.res[1]
 
-    @property
-    def window_top(self):
-        try:
-            return self.top - self.current_window.row_off * self.csy
-        except AttributeError:
-            raise AttributeError("No window loaded")
+    def window_extent(self, window: Window) -> SimpleNamespace:
+        """Collect the bounding coordinates of a given window in the raster.
 
-    @property
-    def window_left(self):
-        try:
-            return self.left + self.current_window.col_off * self.csx
-        except AttributeError:
-            raise AttributeError("No window loaded")
+        Args:
+            window (Window): Window within the raster.
+
+        Returns:
+            SimpleNamespace: Object with coordinate attributes top, bottom, left, right. 
+        """
+        return SimpleNamespace(
+            top=self.top - window.row_off * self.csy,
+            bottom=self.top - (window.row_off + window.height) * self.csy,
+            left=self.left + window.col_off * self.csx,
+            right=self.left + (window.col_off + window.width) * self.csx,
+        )
 
     def matches(self, other: Raster) -> bool:
         return all(
@@ -104,17 +104,14 @@ class Raster:
         """
 
         def intersects(x: float, y: float, window: Window) -> bool:
-            window_top = self.top - window.row_off * self.csy
-            window_bottom = self.top - (window.row_off + window.height) * self.csy
-            window_left = self.left + window.col_off * self.csx
-            window_right = self.left + (window.col_off + window.width) * self.csx
+            window_ext = self.window_extent(window)
 
             return all(
                 [
-                    y <= window_top,
-                    y >= window_bottom,
-                    x >= window_left,
-                    x <= window_right,
+                    y <= window_ext.top,
+                    y >= window_ext.bottom,
+                    x >= window_ext.left,
+                    x <= window_ext.right,
                 ]
             )
 
@@ -130,31 +127,35 @@ class Raster:
         if window is None:
             raise IndexError(f"No window intersects the point ({x}, {y})")
 
-        window_top = self.top - window.row_off * self.csy
-        window_left = self.left + window.col_off * self.csx
-        i = int(np.floor((window_top - y) / self.csy))
-        j = int(np.floor((x - window_left) / self.csx))
+        window_ext = self.window_extent(window)
+        i = int(np.floor((window_ext.top - y) / self.csy))
+        j = int(np.floor((x - window_ext.left) / self.csx))
 
         return window, i, j
 
-    def xy_from_current_window_index(self, i: int, j: int) -> Tuple[float, float]:
-        """Return an x, y coordinate from an index on or relative to the last loaded
+    def xy_from_window_index(
+        self, i: int, j: int, window: Window
+    ) -> Tuple[float, float]:
+        """Return an x, y coordinate from an index on or relative to the provided
         window.
 
         Args:
             i (int): i (y-based) index.
             j (int): j (x-based) index.
+            window (Window): Window associated with the provided (i, j).
 
         Returns:
             Tuple[float, float]: (x, y) coordinates of the index.
         """
+        window_ext = self.window_extent(window)
+
         half_csy = self.csy / 2.0
         half_csx = self.csx / 2.0
 
-        y = self.window_top - i * self.csy
-        y += half_csy if i < 0 else -half_csy
+        y = window_ext.top - i * self.csy
+        y += -half_csy if i < 0 else half_csy
 
-        x = self.window_left + j * self.csx
+        x = window_ext.left + j * self.csx
         x += half_csx if j < 0 else -half_csx
 
         return x, y
@@ -168,10 +169,4 @@ class Raster:
         Returns:
             np.ndarray: 2D Numpy array of data.
         """
-        if self.current_window == s:
-            return self.data
-
-        self.current_window = s
-        self.data = self.ds.read(1, window=self.current_window)
-
-        return self.data
+        return self.ds.read(1, window=s)

@@ -66,16 +66,14 @@ def find_stream(streams: Raster, fd: Raster, x: float, y: float) -> Tuple[float,
     if fd_data[i, j] == fd.nodata or fd_data[i, j] <= 0:
         raise ValueError(f"The point ({x}, {y}) is out of bounds")
 
-    found, i, j = find_stream_task(
-        stream_data, fd_data, i, j
-    )
+    found, i, j = find_stream_task(stream_data, fd_data, i, j)
     while not found:
-        window, i, j = fd.intersecting_window(*fd.xy_from_current_window_index(i, j))
+        window, i, j = fd.intersecting_window(*fd.xy_from_window_index(i, j, window))
         found, i, j = find_stream_task(
             streams[window] != streams.nodata, fd[window], i, j
         )
 
-    return fd.xy_from_current_window_index(i, j)
+    return fd.xy_from_window_index(i, j, window)
 
 
 def delineate(
