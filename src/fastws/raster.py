@@ -15,12 +15,23 @@ class Raster:
 
         if not self.ds.is_tiled:
             raise ValueError("Input raster should be tiled")
+        
+        self.window_cache = None
+        self.data_cache = None
 
     def __enter__(self) -> DatasetReader:
         return self
 
     def __exit__(self, a, b, c):
         self.ds.close
+
+    @property
+    def geotransform(self):
+        return (self.left, self.csx, 0, self.top, 0, -self.csy)
+
+    @property
+    def shape(self):
+        return (self.ds.height, self.ds.width)
 
     @property
     def nodata(self):
@@ -153,14 +164,14 @@ class Raster:
         half_csx = self.csx / 2.0
 
         y = window_ext.top - i * self.csy
-        y += -half_csy if i < 0 else half_csy
+        y += half_csy if i < 0 else -half_csy
 
         x = window_ext.left + j * self.csx
-        x += half_csx if j < 0 else -half_csx
+        x += -half_csx if j < 0 else half_csx
 
         return x, y
 
-    def __getitem__(self, s: Window) -> np.ndarray:
+    def __getitem__(self, window: Window) -> np.ndarray:
         """Collect a window of data.
 
         Args:
@@ -169,4 +180,8 @@ class Raster:
         Returns:
             np.ndarray: 2D Numpy array of data.
         """
-        return self.ds.read(1, window=s)
+        if window != self.window_cache:
+            self.data_cache = self.ds.read(1, window=window)
+            self.window_cache = window
+
+        return self.data_cache

@@ -1,6 +1,8 @@
 from typing import Union, Tuple
 
+import numpy as np
 from numba import njit
+from numba.types import boolean
 
 from fastws.raster import Raster
 
@@ -42,8 +44,49 @@ def find_stream_task(stream, fd, i, j):
 
 
 @njit
-def delineate_task():
-    pass
+def delineate_task(fd: np.ndarray, i: int, j: int) -> Tuple[list, list]:
+    """Delineate a watershed above a point.
+
+    Args:
+        fd (np.ndarray): 2D flow direction array derived from GRASS GIS.
+        i (int): i (y) index.
+        j (int): j (x) index.
+
+    Returns:
+        Tuple[list, list]: Lists of both watershed boundary cells, and cells that remain
+        untested.
+    """
+    directions = [[7, 6, 5], [8, 0, 4], [1, 2, 3]]
+    nbrs = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]]
+
+    stack = [[i, j]]
+    basin = [[i, j]]
+    edges = []
+
+    while len(stack) > 0:
+        i, j = stack.pop()
+        
+        if i == 0 or j == 0 or i == fd.shape[0] - 1 or j == fd.shape[1] - 1:
+            # Edge holds the target element, followed by those that need to be evaluated
+            edge = [[i, j], []]
+            for row_offset, col_offset in nbrs:
+                edge[1].append(i + row_offset, j + col_offset)
+            edges.append(edge)
+            continue
+
+        for row_offset, col_offset in nbrs:
+            t_i, t_j = i + row_offset, j + col_offset
+
+            # Flow off map
+            if fd[t_i, t_j] <= 0:
+                continue
+
+            # Check if the element at this offset contributes to the element being tested
+            if fd[t_i, t_j] == directions[row_offset + 1][col_offset + 1]:
+                basin.append([i, j])
+                stack.append([i, j])
+    
+    return basin, edges
 
 
 def find_stream(streams: Raster, fd: Raster, x: float, y: float) -> Tuple[float, float]:
@@ -68,7 +111,13 @@ def find_stream(streams: Raster, fd: Raster, x: float, y: float) -> Tuple[float,
 
     found, i, j = find_stream_task(stream_data, fd_data, i, j)
     while not found:
-        window, i, j = fd.intersecting_window(*fd.xy_from_window_index(i, j, window))
+        try:
+            window, i, j = fd.intersecting_window(
+                *fd.xy_from_window_index(i, j, window)
+            )
+        except IndexError:
+            raise ValueError(f"No streams found near the point ({x}, {y})")
+
         found, i, j = find_stream_task(
             streams[window] != streams.nodata, fd[window], i, j
         )
@@ -83,7 +132,41 @@ def delineate(
         if not fd.matches(streams):
             raise ValueError("Input Stream and Flow Direction rasters must match")
 
+        # Align the point with the grids and move downslope to a stream
         x_transformed, y_transformed = fd.match_point(x, y, xy_srs)
         x_onstream, y_onstream = find_stream(streams, fd, x_transformed, y_transformed)
 
-        return x_onstream, y_onstream
+        coverage = np.zeros(fd.shape, bool)
+
+        def next_window(x, y):
+            window, i, j = fd.intersecting_window(x, y)
+            coverage[fd.window_idx_to_global([[i, j]], window)] = True
+            new_coverage, edges = delineate_task(fd[window], i, j)
+            coverage[fd.window_idx_to_global(new_coverage, window)] = True
+
+            return [fd.xy_from_window_index(i, j, window) for i, j in edges]
+
+        edges = next_window(x_onstream, y_onstream)
+
+        while len(edges) > 0:
+            next_window(*edges.pop())
+
+        # Create a vector
+        # driver = gdal.GetDriverByName("MEM")
+        # ds = driver.create("name", fd.shape[1], fd.shape[0], 1, gdal.GDT_Byte)
+        # ds.SetGeoTransform(fd.geotransform)
+
+        # srs = osr.SpatialReference()
+        # srs.ImportFromEPSG(self.srid)
+        # raster.SetProjection(srs.ExportToWkt())
+
+        # band = ds.GetRasterBand(1)
+        # band.SetNoDataValue(0)
+        # band.WriteArray(coverage.astype("uint8"))
+        # band.FlushCache()
+        # band = None
+        # ds.FlushCache()
+        # gdal_polygonize(ds, in_memory_vector)
+        # watershed_geojson = in_memory_vector.read()
+
+        return x_onstream, y_onstream, watershed_geojson
