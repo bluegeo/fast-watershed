@@ -16,8 +16,7 @@ class Raster:
         if not self.ds.is_tiled:
             raise ValueError("Input raster should be tiled")
         
-        self.window_cache = None
-        self.data_cache = None
+        self.data_cache = {}
 
     def __enter__(self) -> DatasetReader:
         return self
@@ -26,8 +25,8 @@ class Raster:
         self.ds.close
 
     @property
-    def geotransform(self):
-        return (self.left, self.csx, 0, self.top, 0, -self.csy)
+    def transform(self):
+        return self.ds.transform
 
     @property
     def shape(self):
@@ -101,6 +100,24 @@ class Raster:
         transformer = Transformer.from_crs(self.proj, s_srs, always_xy=True)
 
         return transformer.transform(x, y)
+    
+    def coord_to_idx(self, x: float, y: float) -> Tuple[int, int]:
+        """Convert a cartesian point to a raster grid index.
+
+        Args:
+            x (float): x-coordinate.
+            y (float): y-coordinate.
+
+        Returns:
+            Tuple[int, int]: An index pair in the form (i, j).
+        """
+        i = int(np.floor((self.top - y) / self.csy))
+        j = int(np.floor((x - self.left) / self.csx))
+
+        if i < 0 or j < 0 or i > self.shape[0] - 1 or j > self.shape[1] - 1:
+            raise IndexError(f"Location ({x}, {y}) off of raster map")
+
+        return (i, j)
 
     def intersecting_window(self, x: float, y: float) -> Tuple[Window, int, int]:
         """Return the window that intersects a point.
@@ -163,11 +180,9 @@ class Raster:
         half_csy = self.csy / 2.0
         half_csx = self.csx / 2.0
 
-        y = window_ext.top - i * self.csy
-        y += half_csy if i < 0 else -half_csy
+        y = (window_ext.top - i * self.csy) - half_csy
 
-        x = window_ext.left + j * self.csx
-        x += -half_csx if j < 0 else half_csx
+        x = (window_ext.left + j * self.csx) + half_csx
 
         return x, y
 
@@ -180,8 +195,9 @@ class Raster:
         Returns:
             np.ndarray: 2D Numpy array of data.
         """
-        if window != self.window_cache:
-            self.data_cache = self.ds.read(1, window=window)
-            self.window_cache = window
+        try:
+            return self.data_cache[window]
+        except KeyError:
+            self.data_cache[window] = self.ds.read(1, window=window)
 
-        return self.data_cache
+        return self.data_cache[window]
