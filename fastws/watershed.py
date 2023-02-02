@@ -1,47 +1,11 @@
-from typing import Union, Tuple, List
+from typing import Union, Tuple
 
 import numpy as np
-from numba import njit, typed
 from rasterio.features import shapes
 from pyproj import Transformer
 
 from fastws.raster import Raster
-
-
-@njit
-def find_stream_task(stream, fd, i, j):
-    directions = [
-        [0, 0],
-        [-1, 1],
-        [-1, 0],
-        [-1, -1],
-        [0, -1],
-        [1, -1],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-    ]
-
-    found = False
-
-    while True:
-        if stream[i, j]:
-            found = True
-            break
-
-        # Off map
-        if fd[i, j] <= 0:
-            break
-
-        # Collect the downstream cell
-        i_offset, j_offset = directions[fd[i, j]]
-        i += i_offset
-        j += j_offset
-
-        if i < 0 or i >= fd.shape[0] or j < 0 or j >= fd.shape[1]:
-            break
-
-    return found, i, j
+from .delineate import find_stream_task, delineate_task
 
 
 def find_stream(streams: Raster, fd: Raster, x: float, y: float) -> Tuple[float, float]:
@@ -80,58 +44,6 @@ def find_stream(streams: Raster, fd: Raster, x: float, y: float) -> Tuple[float,
     return fd.xy_from_window_index(i, j, window)
 
 
-@njit
-def delineate_task(
-    fd: np.ndarray, stack: List[List[int]]
-) -> Tuple[List[List[int]], List[List[int]]]:
-    """Delineate a watershed above a point. If a point out of bounds is encountered, the
-    function will return with the element being evaluated and the location of the out
-    of bounds element.
-
-    Args:
-        fd (np.ndarray): 2D flow direction array derived from GRASS GIS.
-        stack (List[List[int]]): Indexes of elements to try and add to the
-        watershed. Stack is mutated.
-
-    Returns:
-        Tuple[List[List[int]], List[List[int]]]: Lists of both watershed
-        cells, and edges encountered.
-    """
-    directions = [[7, 6, 5], [8, 0, 4], [1, 2, 3]]
-    nbrs = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]]
-
-    basin = []
-    edges = []
-
-    while len(stack) > 0:
-        i, j = stack.pop()
-
-        for row_offset, col_offset in nbrs:
-            t_i, t_j = i + row_offset, j + col_offset
-
-            # Out of bounds?
-            if t_i < 0 or t_j < 0 or t_i == fd.shape[0] or t_j == fd.shape[0]:
-                edges.append([directions[row_offset + 1][col_offset + 1], t_i, t_j])
-                continue
-
-            # Flow off map
-            if fd[t_i, t_j] <= 0:
-                continue
-
-            # Check if the element at this offset contributes to the element being
-            # tested
-            if fd[t_i, t_j] == directions[row_offset + 1][col_offset + 1]:
-                stack.append(typed.List([t_i, t_j]))
-                basin.append([t_i, t_j])
-
-    return basin, edges
-
-
-@njit
-def array_to_typed_list(a: np.ndarray) -> typed.List:
-    return typed.List([typed.List(e) for e in a])
-
-
 def delineate(
     stream_src: str, fd_src: str, x: float, y: float, xy_srs: Union[str, int]
 ) -> list:
@@ -151,7 +63,8 @@ def delineate(
         def next_delin(stack, window):
             data = fd[window]
 
-            cov_idx, edges = delineate_task(data, stack[window])
+            cov_idx, edges, edge_dirs = delineate_task(data, np.asarray(stack[window]))
+            stack[window] = []
 
             # Add new indices to coverage
             coverage[
@@ -162,7 +75,12 @@ def delineate(
             ] = True
 
             if len(edges) > 0:
-                edges = np.asarray(edges)
+                edges = np.hstack(
+                    [
+                        np.asarray(edge_dirs).reshape((len(edge_dirs), 1)),
+                        np.asarray(edges),
+                    ]
+                )
 
                 top_slice = edges[:, 1] < 0
                 bottom_slice = edges[:, 1] == data.shape[0]
@@ -195,19 +113,19 @@ def delineate(
                         edge_subset[:, 1] += i - edge_i
                         edge_subset[:, 2] += j - edge_j
 
-                        edge_subset = array_to_typed_list(
+                        edge_subset = (
                             edge_subset[
                                 fd[next_window][(edge_subset[:, 1], edge_subset[:, 2])]
                                 == edge_subset[:, 0]
                             ][:, 1:]
-                        )
+                        ).tolist()
                         try:
                             stack[next_window] += edge_subset
                         except KeyError:
                             stack[next_window] = edge_subset
 
         window, i, j = fd.intersecting_window(x_onstream, y_onstream)
-        stack = {window: typed.List([typed.List([i, j])])}
+        stack = {window: [[i, j]]}
 
         while True:
             next_delin(stack, window)
