@@ -1,13 +1,17 @@
+import json
+
 from fastws.watershed import delineate
 
 
 def handler(event, context):
+    body = json.loads(event["body"])
+
     x, y, geo = delineate(
-        event["streams"], event["direction"], event["x"], event["y"], event["crs"]
+        body["streams"], body["direction"], body["x"], body["y"], body["crs"]
     )
 
     return {
-        "x": x,
-        "y": y,
-        "geo": geo
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps({"x": x, "y": y, "geo": geo}),
     }

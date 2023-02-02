@@ -496,5 +496,5 @@ yarn.lock
 .cdk.staging
 cdk.out
 
-# Code
-package.zip
+# Packages
+*.zip

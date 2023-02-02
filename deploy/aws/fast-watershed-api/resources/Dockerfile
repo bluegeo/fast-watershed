@@ -3,16 +3,25 @@ FROM lambci/lambda:build-python3.8
 WORKDIR /var/task
 ENV WORKDIR /var/task
 
-# Necessary packages here
-RUN mkdir -p packages/ && \
-    pip3 install \
+RUN mkdir -p packages \
+    && pip install -t packages/ \
     rasterio \
     pyproj \
     numpy \
-    numba \
-    git+https://github.com/bluegeo/fast-watershed.git \
-    -t packages/
+    numba
 
-COPY delineate.py "$WORKDIR/"
+# Copy python library and install
+COPY fastws packages/fastws
+COPY setup.py packages/
+RUN cd packages \
+    && pip install --upgrade -t ${WORKDIR}/packages/ .
 
-RUN zip -r9 -D $WORKDIR/package.zip packages/ delineate.py
+# Clean up
+RUN cd packages \
+    && rm -f setup.py \
+    && rm -rf numba* \
+    && rm -rf llvmlite*
+
+COPY deploy/aws/fast-watershed-api/resources/delineate.py "$WORKDIR/"
+
+RUN cd ${WORKDIR}/packages && zip -r9 -D ${WORKDIR}/package.zip ./* ../delineate.py
