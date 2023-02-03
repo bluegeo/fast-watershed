@@ -1,0 +1,30 @@
+#!/bin/bash
+
+function _usage() {
+    echo -n "Usage: $(basename "$0") [--deploy] [--destroy]
+    
+    Build and/or deploy the stream temp application components from the `stream-temp` directory
+    - [--deploy] Build the lambda handler and deploy the API
+    - [--destroy] Destroy all infrastructure"
+}
+
+if [[ "${1}" == "--help" ]]; then
+    _usage
+fi
+
+if [[ "${1}" == "--deploy" ]]; then
+    docker build -t fastws -f deploy/aws/fast-watershed-api/resources/Dockerfile .
+    docker run --name fastws fastws /bin/true
+    docker cp fastws:/var/task/package.zip deploy/aws/fast-watershed-api/resources/package.zip
+    docker rm fastws
+    cd deploy/aws/fast-watershed-api
+    cdk deploy
+    cd ../../..
+fi
+
+if [[ "${1}" == "--destroy" ]]; then
+    cd deploy/aws/fast-watershed-api
+    cdk destroy
+    cd ../../..
+fi
+

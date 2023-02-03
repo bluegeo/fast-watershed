@@ -3,62 +3,73 @@ from typing import Union, Tuple
 import numpy as np
 from rasterio.features import shapes
 from pyproj import Transformer
+from shapely.geometry import shape
 
-from fastws.raster import Raster
+from fastws.raster import Raster, WindowAccumulator
 from .delineate import find_stream_task, delineate_task
 
 
-def find_stream(streams: Raster, fd: Raster, x: float, y: float) -> Tuple[float, float]:
+def find_stream(
+    stream_src: str, fd_src: str, fa_src: str, x: float, y: float, xy_srs
+) -> Tuple[float, float]:
     """Search for the nearest stream cell and return the central coordinate.
 
     Args:
-        streams (Raster): Raster source of stream data.
-        fd (Raster): Raster source of flow direction data.
+        stream_src (str): Raster source of stream data.
+        fd_src (str): Raster source of flow direction data.
+        fa_src (str): Raster source of flow accumulation data. This dataset only
+        requires values where streams occur.
         x (float): x-coordinate.
         y (float): y-coordinate.
 
     Returns:
         Tuple[float, float]: (x, y) coordinates that intersect a stream.
     """
-    window, i, j = fd.intersecting_window(x, y)
+    with Raster(stream_src) as streams, Raster(fd_src) as fd, Raster(fa_src) as fa:
+        # Align the point with the grids and move downslope to a stream
+        x_transformed, y_transformed = fd.match_point(x, y, xy_srs)
 
-    stream_data = streams[window] != streams.nodata
-    fd_data = fd[window]
+        window, i, j = fd.intersecting_window(x_transformed, y_transformed)
 
-    if fd_data[i, j] == fd.nodata or fd_data[i, j] <= 0:
-        raise ValueError(f"The point ({x}, {y}) is out of bounds")
+        stream_data = streams[window] != streams.nodata
+        fd_data = fd[window]
 
-    found, i, j = find_stream_task(stream_data, fd_data, i, j)
-    while not found:
-        try:
-            window, i, j = fd.intersecting_window(
-                *fd.xy_from_window_index(i, j, window)
+        if fd_data[i, j] == fd.nodata or fd_data[i, j] <= 0:
+            raise ValueError(f"The point ({x}, {y}) is out of bounds")
+
+        found, i, j = find_stream_task(stream_data, fd_data, i, j)
+        while not found:
+            try:
+                window, i, j = fd.intersecting_window(
+                    *fd.xy_from_window_index(i, j, window)
+                )
+            except IndexError:
+                raise ValueError(f"No streams found near the point ({x}, {y})")
+
+            found, i, j = find_stream_task(
+                streams[window] != streams.nodata, fd[window], i, j
             )
-        except IndexError:
-            raise ValueError(f"No streams found near the point ({x}, {y})")
 
-        found, i, j = find_stream_task(
-            streams[window] != streams.nodata, fd[window], i, j
-        )
+        area = abs(fa[window][i, j] * fa.csx * fa.csy)
 
-    return fd.xy_from_window_index(i, j, window)
+        x, y = fd.xy_from_window_index(i, j, window)
+
+        return x, y, area
 
 
 def delineate(
-    stream_src: str, fd_src: str, x: float, y: float, xy_srs: Union[str, int]
+    stream_src: str,
+    fd_src: str,
+    fa_src: str,
+    x: float,
+    y: float,
+    xy_srs: Union[str, int],
 ) -> list:
+    x_onstream, y_onstream, _ = find_stream(stream_src, fd_src, fa_src, x, y, xy_srs)
+
     with Raster(fd_src) as fd, Raster(stream_src) as streams:
         if not fd.matches(streams):
             raise ValueError("Input Stream and Flow Direction rasters must match")
-
-        # Align the point with the grids and move downslope to a stream
-        x_transformed, y_transformed = fd.match_point(x, y, xy_srs)
-        x_onstream, y_onstream = find_stream(streams, fd, x_transformed, y_transformed)
-
-        # Binary grid occupying the extent of the flow direction grid
-        # TODO: Allocate output tile-by-tile to avoid memory overload
-        coverage = np.zeros(fd.shape, bool)
-        coverage[fd.coord_to_idx(x_onstream, y_onstream)] = True
 
         def next_delin(stack, window):
             data = fd[window]
@@ -67,12 +78,7 @@ def delineate(
             stack[window] = []
 
             # Add new indices to coverage
-            coverage[
-                (
-                    [i[0] + window.row_off for i in cov_idx],
-                    [j[1] + window.col_off for j in cov_idx],
-                )
-            ] = True
+            coverage[window][tuple(cov_idx.T)] = True
 
             if len(edges) > 0:
                 edges = np.hstack(
@@ -124,8 +130,13 @@ def delineate(
                         except KeyError:
                             stack[next_window] = edge_subset
 
+                        coverage.add_window(next_window)
+
         window, i, j = fd.intersecting_window(x_onstream, y_onstream)
         stack = {window: [[i, j]]}
+
+        coverage = WindowAccumulator.from_raster(fd, window)
+        coverage[window][i, j] = True
 
         while True:
             next_delin(stack, window)
@@ -138,10 +149,22 @@ def delineate(
             if window is None:
                 break
 
-        # Create a vector
+        # Create a GeoJSON
+        watershed_geom = {"type": "MultiPolygon", "coordinates": []}
+
+        for geo, value in shapes(
+            coverage.astype(np.uint8), connectivity=8, transform=coverage.transform
+        ):
+            if value == 1:
+                watershed_geom["coordinates"].append(geo["coordinates"])
+
+        # Calculate area
+        area = shape(watershed_geom).area
+
+        # Convert to WGS84
         transformer = Transformer.from_crs(fd.proj, 4326, always_xy=True)
 
-        def transform_geojson(coords):
+        def transform_coords(coords):
             wgs_pnts = transformer.transform(
                 [coord[0] for coord in coords[0]],
                 [coord[1] for coord in coords[0]],
@@ -149,16 +172,8 @@ def delineate(
 
             return [list(zip(*wgs_pnts))]
 
-        # TODO: Optimize this...rasterio.shapes requires a type promotion and to iterate
-        # the generator to gather polygons
-        watershed_geom = {"type": "MultiPolygon", "coordinates": []}
+        watershed_geom["coordinates"] = [
+            transform_coords(coords) for coords in watershed_geom["coordinates"]
+        ]
 
-        for geo, value in shapes(
-            coverage.astype("uint8"), connectivity=8, transform=fd.transform
-        ):
-            if value == 1:
-                watershed_geom["coordinates"].append(
-                    transform_geojson(geo["coordinates"])
-                )
-
-        return x_onstream, y_onstream, watershed_geom
+        return x_onstream, y_onstream, area, watershed_geom

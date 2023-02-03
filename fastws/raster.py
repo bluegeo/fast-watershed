@@ -9,13 +9,108 @@ from rasterio.windows import Window
 from pyproj import Transformer
 
 
+class WindowAccumulator:
+    def __init__(
+        self, top: float, left: float, csx: float, csy: float, init_window: Window
+    ):
+        self.top = top
+        self.left = left
+        self.csx = csx
+        self.csy = csy
+        self.a = np.zeros((init_window.height, init_window.width), bool)
+
+        self.top_accum = self.top - init_window.row_off * self.csy
+        self.bottom_accum = (
+            self.top - (init_window.row_off + init_window.height) * self.csy
+        )
+        self.left_accum = self.left + init_window.col_off * self.csx
+        self.right_accum = (
+            self.left + (init_window.col_off + init_window.width) * self.csx
+        )
+
+        self.windows = {
+            init_window: (slice(0, self.a.shape[0]), slice(0, self.a.shape[1]))
+        }
+
+    @classmethod
+    def from_raster(cls, raster: Raster, window: Window):
+        return cls(raster.top, raster.left, raster.csx, raster.csy, window)
+
+    def add_window(self, window: Window):
+        try:
+            self.windows[window]
+        except KeyError:
+            window_top = self.top - window.row_off * self.csy
+            window_bottom = self.top - (window.row_off + window.height) * self.csy
+            window_left = self.left + window.col_off * self.csx
+            window_right = self.left + (window.col_off + window.width) * self.csx
+
+            new_top_accum = max(self.top_accum, window_top)
+            new_bottom_accum = min(self.bottom_accum, window_bottom)
+            new_left_accum = min(self.left_accum, window_left)
+            new_right_accum = max(self.right_accum, window_right)
+
+            new_a = np.zeros(
+                (
+                    int(round((new_top_accum - new_bottom_accum) / self.csy)),
+                    int(round((new_right_accum - new_left_accum) / self.csx)),
+                ),
+                bool,
+            )
+
+            top_offset = int(round((new_top_accum - self.top_accum) / self.csy))
+            left_offset = int(round((self.left_accum - new_left_accum) / self.csx))
+
+            new_windows = {
+                window: (
+                    slice(
+                        int(round((new_top_accum - window_top) / self.csy)),
+                        int(round((new_top_accum - window_bottom) / self.csy)),
+                    ),
+                    slice(
+                        int(round((window_left - new_left_accum) / self.csx)),
+                        int(round((window_right - new_left_accum) / self.csx)),
+                    ),
+                )
+            }
+
+            for _window, _slice in self.windows.items():
+                new_slice = (
+                    slice(_slice[0].start + top_offset, _slice[0].stop + top_offset),
+                    slice(_slice[1].start + left_offset, _slice[1].stop + left_offset),
+                )
+                new_a[new_slice] = self.a[_slice]
+
+                new_windows[_window] = new_slice
+
+            self.windows = new_windows
+            self.a = new_a
+
+            self.top_accum = new_top_accum
+            self.bottom_accum = new_bottom_accum
+            self.left_accum = new_left_accum
+            self.right_accum = new_right_accum
+
+    def __getitem__(self, window: Window) -> np.ndarray:
+        return self.a[self.windows[window]]
+
+    def astype(self, dtype: np.dtype):
+        return self.a.astype(dtype)
+
+    @property
+    def transform(self):
+        return rasterio.Affine(
+            self.csx, 0.0, self.left_accum, 0.0, -self.csy, self.top_accum
+        )
+
+
 class Raster:
     def __init__(self, src: str):
         self.ds = rasterio.open(src)
 
         if not self.ds.is_tiled:
             raise ValueError("Input raster should be tiled")
-        
+
         self.data_cache = {}
 
     def __enter__(self) -> DatasetReader:
@@ -63,7 +158,7 @@ class Raster:
             window (Window): Window within the raster.
 
         Returns:
-            SimpleNamespace: Object with coordinate attributes top, bottom, left, right. 
+            SimpleNamespace: Object with coordinate attributes top, bottom, left, right.
         """
         return SimpleNamespace(
             top=self.top - window.row_off * self.csy,
@@ -97,10 +192,10 @@ class Raster:
         Returns:
             Tuple[float, float]: x and y reprojected
         """
-        transformer = Transformer.from_crs(self.proj, s_srs, always_xy=True)
+        transformer = Transformer.from_crs(s_srs, self.proj, always_xy=True)
 
         return transformer.transform(x, y)
-    
+
     def coord_to_idx(self, x: float, y: float) -> Tuple[int, int]:
         """Convert a cartesian point to a raster grid index.
 

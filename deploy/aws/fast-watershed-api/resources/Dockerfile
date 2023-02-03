@@ -7,6 +7,7 @@ RUN mkdir -p packages \
     && pip install -t packages/ \
     rasterio \
     pyproj \
+    shapely \
     numpy \
     numba
 
