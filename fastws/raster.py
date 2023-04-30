@@ -10,6 +10,9 @@ from pyproj import Transformer
 
 
 class WindowAccumulator:
+    """Tracks masked regions of raster windows in the context of the entire extent, and
+    provides a mechanism to collect views into the window data as numpy arrays.
+    """
     def __init__(
         self, top: float, left: float, csx: float, csy: float, init_window: Window
     ):

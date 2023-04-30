@@ -64,6 +64,7 @@ def delineate(
     x: float,
     y: float,
     xy_srs: Union[str, int],
+    wgs_84: bool = True
 ) -> list:
     x_onstream, y_onstream, _ = find_stream(stream_src, fd_src, fa_src, x, y, xy_srs)
 
@@ -72,14 +73,17 @@ def delineate(
             raise ValueError("Input Stream and Flow Direction rasters must match")
 
         def next_delin(stack, window):
+            # Flow direction data over the extent of the current window
             data = fd[window]
 
+            # Add contributing cells to the window mask from the stack, and reset
             cov_idx, edges, edge_dirs = delineate_task(data, np.asarray(stack[window]))
             stack[window] = []
 
             # Add new indices to coverage
             coverage[window][tuple(cov_idx.T)] = True
 
+            # Edge cells are tracked to determine if adjacent windows are needed
             if len(edges) > 0:
                 edges = np.hstack(
                     [
@@ -124,13 +128,17 @@ def delineate(
                                 fd[next_window][(edge_subset[:, 1], edge_subset[:, 2])]
                                 == edge_subset[:, 0]
                             ][:, 1:]
-                        ).tolist()
-                        try:
-                            stack[next_window] += edge_subset
-                        except KeyError:
-                            stack[next_window] = edge_subset
+                        )
 
                         coverage.add_window(next_window)
+
+                        # Add to basin
+                        coverage[next_window][tuple(edge_subset.T)] = True
+
+                        try:
+                            stack[next_window] += edge_subset.tolist()
+                        except KeyError:
+                            stack[next_window] = edge_subset.tolist()
 
         window, i, j = fd.intersecting_window(x_onstream, y_onstream)
         stack = {window: [[i, j]]}
@@ -161,19 +169,19 @@ def delineate(
         # Calculate area
         area = shape(watershed_geom).area
 
-        # Convert to WGS84
-        transformer = Transformer.from_crs(fd.proj, 4326, always_xy=True)
+        if wgs_84:
+            transformer = Transformer.from_crs(fd.proj, 4326, always_xy=True)
 
-        def transform_coords(coords):
-            wgs_pnts = transformer.transform(
-                [coord[0] for coord in coords[0]],
-                [coord[1] for coord in coords[0]],
-            )
+            def transform_coords(coords):
+                wgs_pnts = transformer.transform(
+                    [coord[0] for coord in coords[0]],
+                    [coord[1] for coord in coords[0]],
+                )
 
-            return [list(zip(*wgs_pnts))]
+                return [list(zip(*wgs_pnts))]
 
-        watershed_geom["coordinates"] = [
-            transform_coords(coords) for coords in watershed_geom["coordinates"]
-        ]
+            watershed_geom["coordinates"] = [
+                transform_coords(coords) for coords in watershed_geom["coordinates"]
+            ]
 
         return x_onstream, y_onstream, area, watershed_geom
