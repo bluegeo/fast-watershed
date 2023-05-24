@@ -64,9 +64,29 @@ def delineate(
     x: float,
     y: float,
     xy_srs: Union[str, int],
+    snap: bool = True,
     wgs_84: bool = True
-) -> list:
-    x_onstream, y_onstream, _ = find_stream(stream_src, fd_src, fa_src, x, y, xy_srs)
+) -> Tuple[float, float, float, dict]:
+    """Delineate the watershed on a stream above the point (x, y)
+
+    Args:
+        stream_src (str): Stream raster.
+        fd_src (str): Flow Direction raster.
+        fa_src (str): Flow Accumulation raster.
+        x (float): X-coordinate for delineation.
+        y (float): Y-coordinate for delineation.
+        xy_srs (Union[str, int]): Spatial reference of the (x, y) point.
+        snap (bool, optional): Snap the point downslope until a stream is encountered.
+        Defaults to True.
+        wgs_84 (bool, optional): Transform the output watershed polygon to WGS 84 (4326)
+        Defaults to True.
+
+    Returns:
+        Tuple[float, float, float, dict]: Snapped x coordinate, snapped y coordinate,
+        area of the watershed in the source srs, and the watershed geojson.
+    """
+    if snap:
+        x, y, _ = find_stream(stream_src, fd_src, fa_src, x, y, xy_srs)
 
     with Raster(fd_src) as fd, Raster(stream_src) as streams:
         if not fd.matches(streams):
@@ -140,7 +160,7 @@ def delineate(
                         except KeyError:
                             stack[next_window] = edge_subset.tolist()
 
-        window, i, j = fd.intersecting_window(x_onstream, y_onstream)
+        window, i, j = fd.intersecting_window(x, y)
         stack = {window: [[i, j]]}
 
         coverage = WindowAccumulator.from_raster(fd, window)
@@ -184,4 +204,4 @@ def delineate(
                 transform_coords(coords) for coords in watershed_geom["coordinates"]
             ]
 
-        return x_onstream, y_onstream, area, watershed_geom
+        return x, y, area, watershed_geom

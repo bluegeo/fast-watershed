@@ -15,7 +15,11 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
 ## Deploy the API
 
-1. Build the package code from the root of the `fast-watershed` repository
+1. Set the required dataset constants in `deploy/aws/fast-watershed-api/resources/delineate-template.py`
+and save as `delineate.py`. Paths should be Cloud Optimized Geotiffs in a http-accessible location,
+and be prepended with `/vsicurl/` so GDAL can open them.
+
+2. Build the package code from the root of the `fast-watershed` repository
 
 ```bash
 docker build -t fastws -f deploy/aws/fast-watershed-api/resources/Dockerfile .
@@ -24,14 +28,14 @@ docker cp fastws:/var/task/package.zip deploy/aws/fast-watershed-api/resources/p
 docker rm fastws
 ```
 
-2. Deploy the infrastructure
+3. Deploy the infrastructure
 
 ```bash
 cd deploy/aws/fast-watershed-api
 cdk deploy
 ```
 
-3. Destroy the infrastructure when not needed
+4. Destroy the infrastructure when not needed
 
 ```bash
 cd deploy/aws/fast-watershed-api

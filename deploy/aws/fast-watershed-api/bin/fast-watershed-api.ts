@@ -4,7 +4,7 @@ import * as cdk from 'aws-cdk-lib';
 import { FastWatershedApiStack } from '../lib/fast-watershed-api-stack';
 
 const app = new cdk.App();
-new FastWatershedApiStack(app, 'FastWatershedApiStack', {
+new FastWatershedApiStack(app, 'drfn-FastWatershedApiStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
