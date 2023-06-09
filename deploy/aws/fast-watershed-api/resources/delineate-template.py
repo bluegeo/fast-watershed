@@ -31,9 +31,9 @@ def handler(event, context):
 
         else:
             x, y, accum_area = find_stream(
-                STREAMS_PATH.format(RESOLUTIONS[-1]),
-                DIRECTION_PATH.format(RESOLUTIONS[-1]),
-                ACCUMULATION_PATH.format(RESOLUTIONS[-1]),
+                STREAMS_PATH.format(RESOLUTIONS[0]),
+                DIRECTION_PATH.format(RESOLUTIONS[0]),
+                ACCUMULATION_PATH.format(RESOLUTIONS[0]),
                 body["x"],
                 body["y"],
                 body["crs"],
@@ -47,9 +47,11 @@ def handler(event, context):
                 STREAMS_PATH.format(resolution),
                 DIRECTION_PATH.format(resolution),
                 ACCUMULATION_PATH.format(resolution),
-                body["x"],
-                body["y"],
+                x,
+                y,
                 body["crs"],
+                simplify=body.get("simplify", 0),
+                smooth=body.get("smooth", 0),
             )
 
             result = {

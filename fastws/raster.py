@@ -9,10 +9,30 @@ from rasterio.windows import Window
 from pyproj import Transformer
 
 
+def transform_point(
+    x: float, y: float, s_srs: Union[str, int], t_srs: Union[str, int]
+) -> Tuple[float, float]:
+    """Reproject a point from one coordinate system to another.
+
+    Args:
+        x (float): x-coordinate.
+        y (float): y-coordinate.
+        s_srs (Union[str, int]): Source spatial reference.
+        t_srs (Union[str, int]): Target spatial reference.
+
+    Returns:
+        Tuple[float, float]: x and y reprojected
+    """
+    transformer = Transformer.from_crs(s_srs, t_srs, always_xy=True)
+
+    return transformer.transform(x, y)
+
+
 class WindowAccumulator:
     """Tracks masked regions of raster windows in the context of the entire extent, and
     provides a mechanism to collect views into the window data as numpy arrays.
     """
+
     def __init__(
         self, top: float, left: float, csx: float, csy: float, init_window: Window
     ):
@@ -181,23 +201,6 @@ class Raster:
                 self.ds.width == other.ds.width,
             ]
         )
-
-    def match_point(
-        self, x: float, y: float, s_srs: Union[str, int]
-    ) -> Tuple[float, float]:
-        """Reproject a point to match the coordinate system.
-
-        Args:
-            x (float): x-coordinate.
-            x (float): y-coordinate.
-            s_srs (Union[str, int]): Source spatial reference.
-
-        Returns:
-            Tuple[float, float]: x and y reprojected
-        """
-        transformer = Transformer.from_crs(s_srs, self.proj, always_xy=True)
-
-        return transformer.transform(x, y)
 
     def coord_to_idx(self, x: float, y: float) -> Tuple[int, int]:
         """Convert a cartesian point to a raster grid index.

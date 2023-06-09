@@ -5,7 +5,7 @@ from rasterio.features import shapes
 from pyproj import Transformer
 from shapely.geometry import shape
 
-from fastws.raster import Raster, WindowAccumulator
+from fastws.raster import Raster, WindowAccumulator, transform_point
 from .delineate import find_stream_task, delineate_task
 
 
@@ -27,7 +27,7 @@ def find_stream(
     """
     with Raster(stream_src) as streams, Raster(fd_src) as fd, Raster(fa_src) as fa:
         # Align the point with the grids and move downslope to a stream
-        x_transformed, y_transformed = fd.match_point(x, y, xy_srs)
+        x_transformed, y_transformed = transform_point(x, y, xy_srs, fd.proj)
 
         window, i, j = fd.intersecting_window(x_transformed, y_transformed)
 
@@ -54,6 +54,9 @@ def find_stream(
 
         x, y = fd.xy_from_window_index(i, j, window)
 
+        # Return the x and y coordinates to the original coordinate system
+        x, y = transform_point(x, y, fd.proj, xy_srs)
+
         return x, y, area
 
 
@@ -65,7 +68,9 @@ def delineate(
     y: float,
     xy_srs: Union[str, int],
     snap: bool = True,
-    wgs_84: bool = True
+    wgs_84: bool = True,
+    simplify: float = 0,
+    smooth: float = 0
 ) -> Tuple[float, float, float, dict]:
     """Delineate the watershed on a stream above the point (x, y)
 
@@ -80,6 +85,10 @@ def delineate(
         Defaults to True.
         wgs_84 (bool, optional): Transform the output watershed polygon to WGS 84 (4326)
         Defaults to True.
+        simplify (float, optional): Simplify the resulting geometry with a tolerance.
+        Defaults to 0 (do not simplify).
+        smooth (float, optional): Smooth the resulting geometry with a distance.
+        Defaults to 0 (do not smooth).
 
     Returns:
         Tuple[float, float, float, dict]: Snapped x coordinate, snapped y coordinate,
@@ -91,6 +100,9 @@ def delineate(
     with Raster(fd_src) as fd, Raster(stream_src) as streams:
         if not fd.matches(streams):
             raise ValueError("Input Stream and Flow Direction rasters must match")
+
+        # Match the point to the raster spatial reference
+        x, y = transform_point(x, y, xy_srs, fd.proj)
 
         def next_delin(stack, window):
             # Flow direction data over the extent of the current window
@@ -143,12 +155,10 @@ def delineate(
                         edge_subset[:, 1] += i - edge_i
                         edge_subset[:, 2] += j - edge_j
 
-                        edge_subset = (
-                            edge_subset[
-                                fd[next_window][(edge_subset[:, 1], edge_subset[:, 2])]
-                                == edge_subset[:, 0]
-                            ][:, 1:]
-                        )
+                        edge_subset = edge_subset[
+                            fd[next_window][(edge_subset[:, 1], edge_subset[:, 2])]
+                            == edge_subset[:, 0]
+                        ][:, 1:]
 
                         coverage.add_window(next_window)
 
@@ -187,7 +197,16 @@ def delineate(
                 watershed_geom["coordinates"].append(geo["coordinates"])
 
         # Calculate area
-        area = shape(watershed_geom).area
+        watershed_shape = shape(watershed_geom)
+        if simplify > 0:
+            watershed_shape = watershed_shape.simplify(tolerance=simplify)
+
+        if smooth > 0:
+            watershed_shape = watershed_shape.buffer(smooth, join_style=1).buffer(
+                -smooth, join_style=1
+            )
+
+        area = watershed_shape.area
 
         if wgs_84:
             transformer = Transformer.from_crs(fd.proj, 4326, always_xy=True)
@@ -203,5 +222,8 @@ def delineate(
             watershed_geom["coordinates"] = [
                 transform_coords(coords) for coords in watershed_geom["coordinates"]
             ]
+
+        # Return the x and y coordinates to the original coordinate system
+        x, y = transform_point(x, y, fd.proj, xy_srs)
 
         return x, y, area, watershed_geom
