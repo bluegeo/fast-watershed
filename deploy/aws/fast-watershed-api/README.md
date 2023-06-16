@@ -15,6 +15,12 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
 ## Deploy the API
 
+2. Set the app name environment variable
+
+```bash
+export APP_NAME='your-app-name'
+```
+
 1. Set the required dataset constants in `deploy/aws/fast-watershed-api/resources/delineate-template.py`
 and save as `delineate.py`. Paths should be Cloud Optimized Geotiffs in a http-accessible location,
 and be prepended with `/vsicurl/` so GDAL can open them.

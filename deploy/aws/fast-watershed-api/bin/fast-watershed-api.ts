@@ -3,8 +3,14 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { FastWatershedApiStack } from '../lib/fast-watershed-api-stack';
 
+const appName = process.env.APP_NAME || null;
+
+if (appName === null) {
+  throw new Error("APP_NAME environment variable not set")
+}
+
 const app = new cdk.App();
-new FastWatershedApiStack(app, 'drfn-FastWatershedApiStack', {
+new FastWatershedApiStack(app, `${appName}-FastWatershedApiStack`, {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
