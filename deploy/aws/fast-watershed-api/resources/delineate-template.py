@@ -50,6 +50,7 @@ def handler(event, context):
                 x,
                 y,
                 body["crs"],
+                result_srs=body.get("outCrs", 4326),
                 simplify=body.get("simplify", 0),
                 smooth=body.get("smooth", 0),
             )
@@ -60,7 +61,7 @@ def handler(event, context):
                 "y": y,
                 "res": resolution,
                 "area": area,
-                "geo": geo,
+                "watershedPolygon": geo,
             }
     except:
         result = {"response": "error", "error": traceback.format_exc()}

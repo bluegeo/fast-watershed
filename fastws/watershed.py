@@ -68,7 +68,7 @@ def delineate(
     y: float,
     xy_srs: Union[str, int],
     snap: bool = True,
-    wgs_84: bool = True,
+    result_srs: Union[str, int] = 4326,
     simplify: float = 0,
     smooth: float = 0
 ) -> Tuple[float, float, float, dict]:
@@ -83,8 +83,8 @@ def delineate(
         xy_srs (Union[str, int]): Spatial reference of the (x, y) point.
         snap (bool, optional): Snap the point downslope until a stream is encountered.
         Defaults to True.
-        wgs_84 (bool, optional): Transform the output watershed polygon to WGS 84 (4326)
-        Defaults to True.
+        result_srs (Union[str, int]): Resulting spatial reference for the output
+        watershed polygon. Defaults to 4326.
         simplify (float, optional): Simplify the resulting geometry with a tolerance.
         Defaults to 0 (do not simplify).
         smooth (float, optional): Smooth the resulting geometry with a distance.
@@ -208,20 +208,19 @@ def delineate(
 
         area = watershed_shape.area
 
-        if wgs_84:
-            transformer = Transformer.from_crs(fd.proj, 4326, always_xy=True)
+        transformer = Transformer.from_crs(fd.proj, result_srs, always_xy=True)
 
-            def transform_coords(coords):
-                wgs_pnts = transformer.transform(
-                    [coord[0] for coord in coords[0]],
-                    [coord[1] for coord in coords[0]],
-                )
+        def transform_coords(coords):
+            wgs_pnts = transformer.transform(
+                [coord[0] for coord in coords[0]],
+                [coord[1] for coord in coords[0]],
+            )
 
-                return [list(zip(*wgs_pnts))]
+            return [list(zip(*wgs_pnts))]
 
-            watershed_geom["coordinates"] = [
-                transform_coords(coords) for coords in watershed_geom["coordinates"]
-            ]
+        watershed_geom["coordinates"] = [
+            transform_coords(coords) for coords in watershed_geom["coordinates"]
+        ]
 
         # Return the x and y coordinates to the original coordinate system
         x, y = transform_point(x, y, fd.proj, xy_srs)
