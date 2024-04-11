@@ -70,7 +70,7 @@ def delineate(
     snap: bool = True,
     wgs_84: bool = True,
     simplify: float = 0,
-    smooth: float = 0
+    smooth: float = 0,
 ) -> Tuple[float, float, float, dict]:
     """Delineate the watershed on a stream above the point (x, y)
 
@@ -97,10 +97,7 @@ def delineate(
     if snap:
         x, y, _ = find_stream(stream_src, fd_src, fa_src, x, y, xy_srs)
 
-    with Raster(fd_src) as fd, Raster(stream_src) as streams:
-        if not fd.matches(streams):
-            raise ValueError("Input Stream and Flow Direction rasters must match")
-
+    with Raster(fd_src) as fd:
         # Match the point to the raster spatial reference
         x, y = transform_point(x, y, xy_srs, fd.proj)
 
