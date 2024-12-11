@@ -27,7 +27,7 @@ From an (x, y) point a watershed may be derived using the following:
 python```
 from fastws.watershed import delineate
 
-x, y, geo = delineate("/path/to/streams.tif", "/path/to/flow_direction.tif", x, y, crs)
+x, y, area, geo = delineate("/path/to/streams.tif", "/path/to/flow_direction.tif", "/path/to/flow_accumulation.tif", x, y, crs)
 ```
 
 The above will:
@@ -41,4 +41,5 @@ The resulting parameters are:
 
 * `x`: An updated x coordinate that lies on a stream.
 * `y`: An updated y coordinate that lies on a stream.
+* `area`: Resulting area of the watershed in the raster crs.
 * `geo`: A MultiPolygon GeoJSON dictionary in WGS84 with the resulting watershed boundary.
