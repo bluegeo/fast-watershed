@@ -51,6 +51,6 @@ def delineate_watersheds(
                 {
                     "geometry": geo,
                     "properties": dict(point["properties"])
-                    | {"snapped_x": x, "snapped_y": y, "area": area},
+                    | {"fastws_snap_x": x, "fastws_snap_y": y, "fastws_area": area},
                 }
             )
