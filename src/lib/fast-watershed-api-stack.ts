@@ -4,6 +4,7 @@ import { Construct } from "constructs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 import { HttpLambdaIntegration } from "@aws-cdk/aws-apigatewayv2-integrations-alpha";
+import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
 
 export interface FastWatershedApiStackProps extends cdk.StackProps {
   appName: string;
@@ -22,7 +23,7 @@ export class FastWatershedApiStack extends cdk.Stack {
       directory: path.join(__dirname, "../resources"),
     });
 
-    const handler = new lambda.Function(this, `${props.appName}-WatershedDelineator`, {
+    const lambdaFunction = new lambda.Function(this, `${props.appName}-WatershedDelineator`, {
       runtime: lambda.Runtime.FROM_IMAGE,
       memorySize: 10240,
       timeout: cdk.Duration.seconds(29),
@@ -41,8 +42,35 @@ export class FastWatershedApiStack extends cdk.Stack {
     });
 
     const lambdaIntegration = new HttpLambdaIntegration(
-      `DRFN Raster Lambda Integration - ${props.versionName} ${props.appVersion}`,
-      rasterLambda
+      `${props.appName}-integration`,
+      lambdaFunction
+    );
+
+    const api = new apigwv2.HttpApi(
+      this,
+      `${props.appName}-api`,
+      {
+        apiName: `${props.appName} Watershed Delineator`,
+        corsPreflight: {
+          allowHeaders: ["Authorization", "Content-Type"],
+          allowMethods: [apigwv2.CorsHttpMethod.ANY],
+          allowOrigins: ["*"],
+          maxAge: cdk.Duration.days(10),
+        },
+      }
+    );
+
+    new apigwv2.HttpRoute(
+      this,
+      `${props.appName}-api-post`,
+      {
+        httpApi: api,
+        integration: lambdaIntegration,
+        routeKey: apigwv2.HttpRouteKey.with(
+          "/{proxy+}",
+          apigwv2.HttpMethod.POST
+        ),
+      }
     );
   }
 }

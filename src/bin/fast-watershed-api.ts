@@ -4,6 +4,7 @@ import * as cdk from 'aws-cdk-lib';
 import { FastWatershedApiStack, FastWatershedApiStackProps } from '../lib/fast-watershed-api-stack';
 
 const props: FastWatershedApiStackProps = {
+  appName: "abws",
   streamsPath: "https://ab-watersheds.s3.us-west-2.amazonaws.com/v1/geo-logic_streams_{}.tif",
   directionPath: "https://ab-watersheds.s3.us-west-2.amazonaws.com/v1/geo-logic_fd_{}.tif",
   accumulationPath: "https://ab-watersheds.s3.us-west-2.amazonaws.com/v1/geo-logic_fa_streams_{}.tif",
