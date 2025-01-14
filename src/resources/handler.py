@@ -1,5 +1,4 @@
-# Complete the global variables in this script and save as `delineate.py`
-
+import os
 import json
 import traceback
 
@@ -7,19 +6,19 @@ from fastws.watershed import find_stream, delineate
 
 
 # Path to a Streams raster
-STREAMS_PATH = ""
+STREAMS_PATH = os.environ["STREAMS_PATH"]
 
 # Path to a Flow Direction raster
-DIRECTION_PATH = ""
+DIRECTION_PATH = os.environ["DIRECTION_PATH"]
 
 # Path to a flow accumulation raster (ideally limited to stream cells)
-ACCUMULATION_PATH = ""
+ACCUMULATION_PATH = os.environ["ACCUMULATION_PATH"]
 
 # Resolutions hierarchy to complete delineations
-RESOLUTIONS = []
+RESOLUTIONS = json.loads(os.environ["RESOLUTIONS"])
 
 # Area thresholds to constrain resolution
-AREA_THRESH = []
+AREA_THRESH = json.loads(os.environ["AREA_THRESH"])
 
 
 def handler(event, context):
