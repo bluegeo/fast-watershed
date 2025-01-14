@@ -6,7 +6,7 @@ from pyproj import Transformer
 from shapely.geometry import shape
 
 from fastws.raster import Raster, WindowAccumulator, transform_point
-from .delineate import find_stream_task, delineate_task
+from delineate import find_stream_task, delineate_task
 
 
 def find_stream(

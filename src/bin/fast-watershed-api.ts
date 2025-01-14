@@ -13,6 +13,7 @@ const props: FastWatershedApiStackProps = {
 }
 
 const app = new cdk.App();
+
 new FastWatershedApiStack(app, `${props.appName}-FastWatershedApiStack`, props);
 
 app.synth();

@@ -1,6 +1,6 @@
 {
-  "name": "src",
-  "version": "0.1.0",
+  "name": "fast-watershed",
+  "version": "1.0",
   "bin": {
     "src": "bin/src.js"
   },

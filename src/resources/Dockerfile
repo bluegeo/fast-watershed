@@ -15,7 +15,8 @@ ENV \
     GEOS_VERSION=3.12.2 \
     GDAL_VERSION=3.9.2 \
     LD_LIBRARY_PATH=$PREFIX/lib:$LD_LIBRARY_PATH \
-    PATH=$PREFIX/bin:$PATH
+    PATH=$PREFIX/bin:$PATH \
+    PYTHONPATH=$PREFIX:$PREFIX/py
 
 # Install build dependencies
 RUN dnf install -y \
@@ -108,10 +109,10 @@ RUN cd /tmp \
     && cmake --build . -- -j $(nproc) && cmake --build . --target install
 
 # Copy python library and install
-COPY fastws packages/fastws
-COPY setup.py packages/
-RUN cd packages \
-    && pip install --upgrade -t $LAMBDA_TASK_ROOT/py
+COPY app /tmp/fastws
+RUN cd /tmp/fastws \
+    && pip install setuptools numba \
+    && pip install --no-build-isolation -t $LAMBDA_TASK_ROOT/py .
 
 FROM --platform=linux/amd64 public.ecr.aws/lambda/python:${PYTHON_RUNTIME}
 

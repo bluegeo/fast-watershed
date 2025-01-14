@@ -2,4 +2,3 @@ rasterio
 pyproj
 shapely
 numpy
-numba

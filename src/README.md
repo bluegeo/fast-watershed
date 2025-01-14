@@ -1,6 +1,6 @@
-# Welcome to your CDK TypeScript project
+# Fast Watershed API CDK
 
-This is a blank project for CDK development with TypeScript.
+Deploy an app that delineates watershed
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 

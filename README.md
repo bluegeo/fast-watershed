@@ -3,10 +3,11 @@
 A package that quickly and efficiently delineates watersheds using a GRASS-derived
 flow direction grid.
 
-### Installation
+### Local Installation
 
 ```bash
-# From the root of the directory
+cd src/resources/app
+pip install setuptools numba
 pip install .
 ```
 
@@ -43,3 +44,12 @@ The resulting parameters are:
 * `y`: An updated y coordinate that lies on a stream.
 * `area`: Resulting area of the watershed in the raster crs.
 * `geo`: A MultiPolygon GeoJSON dictionary in WGS84 with the resulting watershed boundary.
+
+### Deploying to AWS as an API
+
+Configure paths to rasters and add the paths to the stack props in `src/bin/fast-watershed-api.ts`
+
+```bash
+cd src
+cdk deploy
+```
