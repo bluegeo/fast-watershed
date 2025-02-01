@@ -73,5 +73,10 @@ export class FastWatershedApiStack extends cdk.Stack {
         ),
       }
     );
+
+    new cdk.CfnOutput(this, "Endpoint", {
+      value: api.url as string,
+      description: "Watershed API Endpoint",
+    });
   }
 }
