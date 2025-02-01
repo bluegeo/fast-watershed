@@ -1,6 +1,6 @@
 ARG PYTHON_RUNTIME=3.12
 
-FROM --platform=linux/amd64 public.ecr.aws/lambda/python:${PYTHON_RUNTIME} AS build
+FROM public.ecr.aws/lambda/python:${PYTHON_RUNTIME} AS build
 
 ENV PREFIX=$LAMBDA_TASK_ROOT
 
@@ -114,7 +114,7 @@ RUN cd /tmp/fastws \
     && pip install setuptools numba \
     && pip install --no-build-isolation -t $LAMBDA_TASK_ROOT/py .
 
-FROM --platform=linux/amd64 public.ecr.aws/lambda/python:${PYTHON_RUNTIME}
+FROM public.ecr.aws/lambda/python:${PYTHON_RUNTIME}
 
 ENV PREFIX=$LAMBDA_TASK_ROOT
 

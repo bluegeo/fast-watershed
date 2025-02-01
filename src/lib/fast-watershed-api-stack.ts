@@ -21,6 +21,7 @@ export class FastWatershedApiStack extends cdk.Stack {
 
     const asset = new DockerImageAsset(this, `${props.appName}-dockerimage`, {
       directory: path.join(__dirname, "../resources"),
+      platform: cdk.aws_ecr_assets.Platform.LINUX_AMD64,
     });
 
     const lambdaFunction = new lambda.Function(this, `${props.appName}-WatershedDelineator`, {
