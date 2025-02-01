@@ -112,7 +112,8 @@ RUN cd /tmp \
 COPY app /tmp/fastws
 RUN cd /tmp/fastws \
     && pip install setuptools numba \
-    && pip install --no-build-isolation -t $LAMBDA_TASK_ROOT/py .
+    && pip install --no-build-isolation -t $LAMBDA_TASK_ROOT/py . \
+    && python -m compileall $LAMBDA_TASK_ROOT/py
 
 FROM public.ecr.aws/lambda/python:${PYTHON_RUNTIME}
 
