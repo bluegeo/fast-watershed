@@ -120,8 +120,7 @@ ENV PREFIX=$LAMBDA_TASK_ROOT
 
 # Libs
 # For rasterio
-COPY --from=build /usr/lib64/libexpat.so.1 $PREFIX/lib/
-COPY --from=build /usr/lib64/libexpat.so.1.8.10 $PREFIX/lib/
+COPY --from=build /usr/lib64/libexpat.so.* $PREFIX/lib/
 
 COPY --from=build $PREFIX/lib/ $PREFIX/lib/
 COPY --from=build $PREFIX/include/ $PREFIX/include/
