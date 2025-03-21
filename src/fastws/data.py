@@ -5,8 +5,9 @@
 import os
 
 try:
+    import dask.array as da
     from hydrotools.utils import TempRasterFiles
-    from hydrotools.raster import warp
+    from hydrotools.raster import warp, from_raster, to_raster
     from hydrotools.watershed import flow_direction_accumulation, extract_streams
 except:
     raise ImportError(
@@ -31,7 +32,7 @@ def prepare_data(dem_path: str, resolutions=[15, 25, 50, 100, 200]):
         Defaults to [15, 25, 50, 100, 200].
     """
     for res in resolutions:
-        with TempRasterFiles(2) as (dem_reproj, flow_dir_tmp):
+        with TempRasterFiles(3) as (dem_reproj, flow_dir_tmp, flow_acc_tmp):
             # Resample the DEM
             warp(
                 dem_path,
@@ -46,6 +47,15 @@ def prepare_data(dem_path: str, resolutions=[15, 25, 50, 100, 200]):
             streams = out_path(dem_path, "streams", res)
             flow_dir = out_path(dem_path, "flow_dir", res)
 
-            flow_direction_accumulation(dem_reproj, flow_dir_tmp, flow_acc)
+            flow_direction_accumulation(dem_reproj, flow_dir_tmp, flow_acc_tmp)
 
             extract_streams(dem_reproj, flow_acc, streams, flow_dir)
+
+            # Only include flow accumulation over the extent of streams
+            to_raster(
+                da.ma.masked_where(
+                    da.ma.getmaskarray(from_raster(streams)), from_raster(flow_acc_tmp)
+                ),
+                flow_acc_tmp,
+                flow_acc,
+            )
