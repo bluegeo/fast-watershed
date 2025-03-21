@@ -1,11 +1,11 @@
-from setuptools import setup, find_namespace_packages
+from setuptools import setup
 
 from aot import cc
 
 
 if __name__ == "__main__":
     cc.compile()
-    
+
     setup(
         name="fastws",
         version="1.0",
@@ -13,7 +13,8 @@ if __name__ == "__main__":
         author="bluegeo",
         author_email="devin.cairns@bluegeo.ca",
         url="https://github.com/bluegeo/fast-watershed",
-        packages=find_namespace_packages(),
+        packages=["fastws"],
+        package_dir={"": "src"},
         ext_modules=[cc.distutils_extension()],
-        install_requires=["numpy", "rasterio", "shapely", "pyproj"]
+        install_requires=["numpy", "rasterio", "shapely", "pyproj", "fiona"],
     )

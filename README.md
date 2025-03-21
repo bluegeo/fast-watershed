@@ -1,14 +1,17 @@
 # Fast Watershed
 
-A package that quickly and efficiently delineates watersheds using a GRASS-derived
+A python package that quickly and efficiently delineates watersheds using a GRASS-derived
 flow direction grid.
 
-### Local Installation
+### Installation
+
+The package requires numba to compile some of the code ahead of time. To achieve this,
+`setuptools` and `numba` (which include `numpy`) must be installed and the package must
+be installed without pip creating an isolated environment.
 
 ```bash
-cd src/resources/app
 pip install setuptools numba
-pip install .
+pip install --no-build-isolation .
 ```
 
 ### Data Preparation
@@ -45,11 +48,3 @@ The resulting parameters are:
 * `area`: Resulting area of the watershed in the raster crs.
 * `geo`: A MultiPolygon GeoJSON dictionary in WGS84 with the resulting watershed boundary.
 
-### Deploying to AWS as an API
-
-Configure paths to rasters and add the paths to the stack props in `src/bin/fast-watershed-api.ts`
-
-```bash
-cd src
-cdk deploy
-```

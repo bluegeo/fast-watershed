@@ -2,3 +2,4 @@ rasterio
 pyproj
 shapely
 numpy
+fiona
