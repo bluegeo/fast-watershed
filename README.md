@@ -42,7 +42,7 @@ is appended to the file names.
 From an (x, y) point in the same coordinate reference system as the rastrs,
 a watershed may be derived like this:
 
-python```
+```python
 from fastws.watershed import delineate
 
 
