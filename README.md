@@ -67,19 +67,12 @@ The above will:
 1. Transform the point from the spatial reference provided by the `crs` argument (which may be an EPSG, WKT, or PROJ4
 string) into the same coordinate system as the raster.
 2. Move the input point downslope until it encounters a stream.
-3. Delineate a watershed above the point and return a GeoJSON object.
-
-The resulting parameters are:
-
-* `x`: An updated x coordinate that lies on a stream.
-* `y`: An updated y coordinate that lies on a stream.
-* `area`: Resulting area of the watershed in the raster crs.
-* `geo`: A MultiPolygon GeoJSON dictionary in WGS84 with the resulting watershed boundary.
+3. Delineate a watershed above the point.
 
 ### Variable-resolution delineation
 
 Delineating using variable resolutions are useful for scale. For example, you could
-use a higher resolution to delineate smaller watersheds, and larger resolutions to
+use a higher resolution to delineate smaller watersheds, and coarser resolutions to
 delineate larger watersheds for the sake of speed.
 
 To prepare for this you can use the `resolutions` argument in the `data` module.
