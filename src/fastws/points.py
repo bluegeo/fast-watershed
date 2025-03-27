@@ -1,19 +1,31 @@
-"""Generate a watersheds polygon file from a vector file of points
-"""
+"""Generate a watersheds polygon file from a vector file of points"""
 
-import fiona
+from typing import Optional
+
+try:
+    import fiona
+except ImportError:
+    raise ImportError("The fiona package is required to use the `points` module.")
 
 from fastws.watershed import delineate
 
 
 def delineate_watersheds(
-    src: str, dst: str, streams: str, flow_accumulation: str, flow_direction: str
+    src: str,
+    dst: str,
+    streams: str,
+    flow_direction: str,
+    snap: bool = True,
+    flow_accumulation: Optional[str] = None,
 ):
+    if snap and flow_accumulation is None:
+        raise ValueError("Flow accumulation data must be provided when snapping")
+
     with fiona.open(src) as layer:
         schema = layer.schema
         crs = layer.crs
 
-        if schema["geometry"] != "Point":
+        if schema is None or schema["geometry"] != "Point":
             raise ValueError("Input vector file must have a Point geometry type")
 
         points = [
@@ -38,13 +50,13 @@ def delineate_watersheds(
     ) as layer:
         for point in points:
             x, y, area, geo = delineate(
-                streams,
-                flow_direction,
-                flow_accumulation,
                 point["coords"][0],
                 point["coords"][1],
-                crs,
-                wgs_84=False,
+                streams,
+                flow_direction,
+                snap=snap,
+                fa_src=flow_accumulation,
+                xy_srs=crs,
             )
 
             layer.write(

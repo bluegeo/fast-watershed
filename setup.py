@@ -8,7 +8,7 @@ if __name__ == "__main__":
 
     setup(
         name="fastws",
-        version="1.0",
+        version="2.0",
         description="Quickly and efficiently delineate watersheds",
         author="bluegeo",
         author_email="devin.cairns@bluegeo.ca",
@@ -16,5 +16,5 @@ if __name__ == "__main__":
         packages=["fastws"],
         package_dir={"": "src"},
         ext_modules=[cc.distutils_extension()],
-        install_requires=["numpy", "rasterio", "shapely", "pyproj", "fiona"],
+        install_requires=["numpy", "rasterio", "shapely", "pyproj"],
     )

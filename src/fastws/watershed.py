@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import numpy as np
 from rasterio.features import shapes
@@ -10,8 +10,13 @@ from delineate import find_stream_task, delineate_task
 
 
 def find_stream(
-    stream_src: str, fd_src: str, fa_src: str, x: float, y: float, xy_srs
-) -> Tuple[float, float]:
+    stream_src: str,
+    fd_src: str,
+    fa_src: str,
+    x: float,
+    y: float,
+    xy_srs: Optional[Union[str, int]] = None,
+) -> Tuple[float, float, float]:
     """Search for the nearest stream cell and return the central coordinate.
 
     Args:
@@ -21,15 +26,21 @@ def find_stream(
         requires values where streams occur.
         x (float): x-coordinate.
         y (float): y-coordinate.
+        xy_srs (Union[str, int], optional): Spatial reference of the (x, y) point.
+        If not provided, it is assumed that the point is in the same crs as the input
+        rasters. Defaults to None.
 
     Returns:
         Tuple[float, float]: (x, y) coordinates that intersect a stream.
     """
     with Raster(stream_src) as streams, Raster(fd_src) as fd, Raster(fa_src) as fa:
-        # Align the point with the grids and move downslope to a stream
-        x_transformed, y_transformed = transform_point(x, y, xy_srs, fd.proj)
+        if xy_srs is not None:
+            # Align the point with the grids and move downslope to a stream
+            x_prepared, y_prepared = transform_point(x, y, xy_srs, fd.proj)
+        else:
+            x_prepared, y_prepared = x, y
 
-        window, i, j = fd.intersecting_window(x_transformed, y_transformed)
+        window, i, j = fd.intersecting_window(x_prepared, y_prepared)
 
         stream_data = streams[window] != streams.nodata
         fd_data = fd[window]
@@ -54,21 +65,22 @@ def find_stream(
 
         x, y = fd.xy_from_window_index(i, j, window)
 
-        # Return the x and y coordinates to the original coordinate system
-        x, y = transform_point(x, y, fd.proj, xy_srs)
+        if xy_srs is not None:
+            # Return the x and y coordinates to their original coordinate system
+            x, y = transform_point(x, y, fd.proj, xy_srs)
 
         return x, y, area
 
 
 def delineate(
-    stream_src: str,
-    fd_src: str,
-    fa_src: str,
     x: float,
     y: float,
-    xy_srs: Union[str, int],
-    snap: bool = True,
-    wgs_84: bool = True,
+    stream_src: str,
+    fd_src: str,
+    xy_srs: Optional[Union[str, int]] = None,
+    snap: bool = False,
+    fa_src: Optional[str] = None,
+    out_crs: Optional[Union[str, int]] = None,
     simplify: float = 0,
     smooth: float = 0,
 ) -> Tuple[float, float, float, dict]:
@@ -76,15 +88,18 @@ def delineate(
 
     Args:
         stream_src (str): Stream raster.
-        fd_src (str): Flow Direction raster.
-        fa_src (str): Flow Accumulation raster.
         x (float): X-coordinate for delineation.
         y (float): Y-coordinate for delineation.
-        xy_srs (Union[str, int]): Spatial reference of the (x, y) point.
+        fd_src (str): Flow Direction raster.
+        xy_srs (Union[str, int], optional): Spatial reference of the (x, y) point.
+        If not provided, it is assumed that the point is in the same crs as the input
+        rasters. Defaults to None.
         snap (bool, optional): Snap the point downslope until a stream is encountered.
-        Defaults to True.
-        wgs_84 (bool, optional): Transform the output watershed polygon to WGS 84 (4326)
-        Defaults to True.
+        Defaults to False.
+        fa_src (str): Flow Accumulation raster.
+        out_crs (Union[str, int], optional): Spatial reference of the output watershed
+        polygon. Defaults to the spatial reference of the input raster.
+        Defaults to None.
         simplify (float, optional): Simplify the resulting geometry with a tolerance.
         Defaults to 0 (do not simplify).
         smooth (float, optional): Smooth the resulting geometry with a distance.
@@ -95,11 +110,14 @@ def delineate(
         area of the watershed in the source srs, and the watershed geojson.
     """
     if snap:
+        if fa_src is None:
+            raise ValueError("Flow accumulation raster is required for snapping")
         x, y, _ = find_stream(stream_src, fd_src, fa_src, x, y, xy_srs)
 
     with Raster(fd_src) as fd:
         # Match the point to the raster spatial reference
-        x, y = transform_point(x, y, xy_srs, fd.proj)
+        if xy_srs is not None:
+            x, y = transform_point(x, y, xy_srs, fd.proj)
 
         def next_delin(stack, window):
             # Flow direction data over the extent of the current window
@@ -188,7 +206,9 @@ def delineate(
         watershed_geom = {"type": "MultiPolygon", "coordinates": []}
 
         for geo, value in shapes(
-            coverage.astype(np.uint8), connectivity=8, transform=coverage.transform
+            coverage.astype(np.dtype("uint8")),
+            connectivity=8,
+            transform=coverage.transform,
         ):
             if value == 1:
                 watershed_geom["coordinates"].append(geo["coordinates"])
@@ -199,14 +219,14 @@ def delineate(
             watershed_shape = watershed_shape.simplify(tolerance=simplify)
 
         if smooth > 0:
-            watershed_shape = watershed_shape.buffer(smooth, join_style=1).buffer(
-                -smooth, join_style=1
+            watershed_shape = watershed_shape.buffer(smooth, join_style="round").buffer(
+                -smooth, join_style="round"
             )
 
         area = watershed_shape.area
 
-        if wgs_84:
-            transformer = Transformer.from_crs(fd.proj, 4326, always_xy=True)
+        if out_crs is not None:
+            transformer = Transformer.from_crs(fd.proj, out_crs, always_xy=True)
 
             def transform_coords(coords):
                 wgs_pnts = transformer.transform(
@@ -221,6 +241,7 @@ def delineate(
             ]
 
         # Return the x and y coordinates to the original coordinate system
-        x, y = transform_point(x, y, fd.proj, xy_srs)
+        if xy_srs is not None:
+            x, y = transform_point(x, y, fd.proj, xy_srs)
 
         return x, y, area, watershed_geom
