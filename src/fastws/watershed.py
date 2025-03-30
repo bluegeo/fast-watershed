@@ -1,7 +1,8 @@
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple, Optional, List
 
 import numpy as np
 from rasterio.features import shapes
+from rasterio.windows import from_bounds
 from pyproj import Transformer
 from shapely.geometry import shape
 
@@ -83,6 +84,7 @@ def delineate(
     out_crs: Optional[Union[str, int]] = None,
     simplify: float = 0,
     smooth: float = 0,
+    upstream_offset: Optional[List[int]] = None,
 ) -> Tuple[float, float, float, dict]:
     """Delineate the watershed on a stream above the point (x, y)
 
@@ -104,6 +106,10 @@ def delineate(
         Defaults to 0 (do not simplify).
         smooth (float, optional): Smooth the resulting geometry with a distance.
         Defaults to 0 (do not smooth).
+        upstream_offset (List[int, int], optional): The offset of the first cell
+        upstream of the (x, y) point. This is used to avoid delineating the watershed
+        for all streams at a confluence and initiate the delineation for a specific
+        direction. Defaults to None.
 
     Returns:
         Tuple[float, float, float, dict]: Snapped x coordinate, snapped y coordinate,
@@ -119,12 +125,16 @@ def delineate(
         if xy_srs is not None:
             x, y = transform_point(x, y, xy_srs, fd.proj)
 
-        def next_delin(stack, window):
+        def next_delin(stack, window, avoid_tribs_offsets=None):
             # Flow direction data over the extent of the current window
             data = fd[window]
 
             # Add contributing cells to the window mask from the stack, and reset
-            cov_idx, edges, edge_dirs = delineate_task(data, np.asarray(stack[window]))
+            if avoid_tribs_offsets is None:
+                avoid_tribs_offsets = [[0, 0]]
+            cov_idx, edges, edge_dirs = delineate_task(
+                data, np.asarray(stack[window]), np.asarray(avoid_tribs_offsets)
+            )
             stack[window] = []
 
             # Add new indices to coverage
@@ -191,16 +201,50 @@ def delineate(
         coverage = WindowAccumulator.from_raster(fd, window)
         coverage[window][i, j] = True
 
-        while True:
-            next_delin(stack, window)
+        if window is not None:
+            if upstream_offset is not None:
+                # Identify tributary cells to avoid during initial delineation
+                with Raster(stream_src) as stream_raster:
+                    outlet_window = from_bounds(
+                        x - (stream_raster.csx * 1.5),
+                        y - (stream_raster.csy * 1.5),
+                        x + (stream_raster.csx * 1.5),
+                        y + (stream_raster.csy * 1.5),
+                        transform=stream_raster.transform,
+                    )
 
-            window = next(
-                (wind for wind, wind_stack in stack.items() if len(wind_stack) > 0),
-                None,
-            )
+                    outlet_window_data = stream_raster.ds.read(
+                        window=outlet_window, masked=True
+                    )[0]
 
-            if window is None:
-                break
+                stream_mask = ~outlet_window_data.mask
+                avoid_tribs_offsets = []
+                for nbr in [
+                    [-1, -1],
+                    [-1, 0],
+                    [-1, 1],
+                    [0, -1],
+                    [0, 1],
+                    [1, -1],
+                    [1, 0],
+                    [1, 1],
+                ]:
+                    if stream_mask[1 + nbr[0], 1 + nbr[1]] and nbr != upstream_offset:
+                        avoid_tribs_offsets.append(nbr)
+
+                # First delineation does not include tributaries
+                next_delin(stack, window, avoid_tribs_offsets=avoid_tribs_offsets)
+
+            while True:
+                next_delin(stack, window)
+
+                window = next(
+                    (wind for wind, wind_stack in stack.items() if len(wind_stack) > 0),
+                    None,
+                )
+
+                if window is None:
+                    break
 
         # Create a GeoJSON
         watershed_geom = {"type": "MultiPolygon", "coordinates": []}

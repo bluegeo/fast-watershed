@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import numpy as np
 import rasterio
-from rasterio import DatasetReader
 from rasterio.windows import Window
 from pyproj import Transformer
 
@@ -136,7 +135,7 @@ class Raster:
 
         self.data_cache = {}
 
-    def __enter__(self) -> DatasetReader:
+    def __enter__(self) -> Raster:
         return self
 
     def __exit__(self, a, b, c):

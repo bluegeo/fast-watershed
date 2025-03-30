@@ -43,9 +43,9 @@ def find_stream_task(stream, fd, i, j):
 
 @cc.export(
     "delineate_task",
-    "Tuple((i8[:, :], i8[:, :], i2[:]))(i2[:, :], i8[:, :])",
+    "Tuple((i8[:, :], i8[:, :], i2[:]))(i2[:, :], i8[:, :], i8[:, :])",
 )
-def delineate_task(fd, stack):
+def delineate_task(fd, stack, avoid_offsets):
     """Delineate a watershed above a point. If a point out of bounds is encountered, the
     function will return with the element being evaluated and the location of the out
     of bounds element.
@@ -54,6 +54,9 @@ def delineate_task(fd, stack):
         fd (np.ndarray): 2D flow direction array derived from GRASS GIS.
         stack (np.ndarray): Indexes of elements to try and add to the
         watershed.
+        avoid_offsets (np.ndarray): 2D array of offsets to avoid when
+        evaluating incoming streams. Used to preferentially avoid tributaries at
+        confluences.
 
     Returns:
         Lists of both watershed
@@ -72,6 +75,10 @@ def delineate_task(fd, stack):
         i, j = list_stack.pop()
 
         for row_offset, col_offset in nbrs:
+            for avoid_row_offset, avoid_col_offset in avoid_offsets:
+                if row_offset == avoid_row_offset and col_offset == avoid_col_offset:
+                    continue
+
             t_i, t_j = i + row_offset, j + col_offset
 
             # Out of bounds?
@@ -91,5 +98,8 @@ def delineate_task(fd, stack):
             if fd[t_i, t_j] == directions[row_offset + 1][col_offset + 1]:
                 list_stack.append([t_i, t_j])
                 basin.append([t_i, t_j])
+
+        # Avoid offsets is only used for the first iteration
+        avoid_offsets = np.array([[0, 0]])
 
     return np.asarray(basin)[1:], np.asarray(edges)[1:], np.asarray(edge_directions)
