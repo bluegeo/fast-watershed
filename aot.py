@@ -75,9 +75,12 @@ def delineate_task(fd, stack, avoid_offsets):
         i, j = list_stack.pop()
 
         for row_offset, col_offset in nbrs:
+            skip_offset = False
             for avoid_row_offset, avoid_col_offset in avoid_offsets:
                 if row_offset == avoid_row_offset and col_offset == avoid_col_offset:
-                    continue
+                    skip_offset = True
+            if skip_offset:
+                continue
 
             t_i, t_j = i + row_offset, j + col_offset
 
