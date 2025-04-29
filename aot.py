@@ -85,7 +85,7 @@ def delineate_task(fd, stack, avoid_offsets):
             t_i, t_j = i + row_offset, j + col_offset
 
             # Out of bounds?
-            if t_i < 0 or t_j < 0 or t_i == fd.shape[0] or t_j == fd.shape[0]:
+            if t_i < 0 or t_j < 0 or t_i == fd.shape[0] or t_j == fd.shape[1]:
                 edge_directions.append(
                     np.int16(directions[row_offset + 1][col_offset + 1])
                 )
