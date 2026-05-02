@@ -1,122 +1,215 @@
 # Fast Watershed
 
-A python package that quickly and efficiently delineates watersheds using a GRASS-derived
+A Python package that quickly and efficiently delineates watersheds using a GRASS-derived
 flow direction grid.
 
-### Installation
+## Requirements
 
-The package requires numba to compile some of the code ahead of time. To achieve this,
-`setuptools` and `numba` (which include `numpy`) must be installed and the package must
-be installed without pip creating an isolated environment.
+Runtime dependencies (installed automatically):
+
+* [numpy](https://numpy.org)
+* [rasterio](https://rasterio.readthedocs.io)
+* [shapely](https://shapely.readthedocs.io)
+* [pyproj](https://pyproj4.github.io/pyproj)
+
+Build-time dependencies (required before installing):
+
+* [numba](https://numba.pydata.org) — used to compile performance-critical code ahead of time
+* [setuptools](https://setuptools.pypa.io)
+
+Optional dependencies:
+
+* [fiona](https://fiona.readthedocs.io) — required only for the `points` module (batch delineation from a vector file)
+* [GRASS GIS](https://grass.osgeo.org) + [hydro-tools](https://github.com/bluegeo/hydro-tools) — required only for the `data` module (DEM preparation)
+
+## Installation
+
+Because some internals are compiled ahead-of-time with numba, `setuptools` and `numba`
+must be present **before** installing the package, and pip's build isolation must be
+disabled:
 
 ```bash
 pip install setuptools numba
 pip install --no-build-isolation .
 ```
 
-### Data Preparation
+## Data Preparation
 
-To create grids from a DEM that can be used by the package the `data` module has been
-provided. To use this module there are several dependencies:
+The `data` module generates the flow direction, flow accumulation, and stream rasters
+required by the delineation functions. It depends on:
 
-1. [GRASS GIS](https://grass.osgeo.org) must be installed
-2. [hydro-tools](https://github.com/bluegeo/hydro-tools) must be installed:
-`pip install git+https://github.com/bluegeo/hydro-tools.git`
+1. [GRASS GIS](https://grass.osgeo.org) installed on the system
+2. [hydro-tools](https://github.com/bluegeo/hydro-tools):
 
-#### Prepare data from a DEM:
+```bash
+pip install git+https://github.com/bluegeo/hydro-tools.git
+```
 
-To run the preparation tool:
+### Prepare grids from a DEM
 
 ```python
 from fastws.data import prepare_data
 
-prepare_data(dem_path)
+prepare_data("/path/to/dem.tif")
 ```
 
-Grids of flow direction, flow accumulation, and streams will be created in
-the same directory as the DEM. If `resolutions` are provided, each resolution number
-is appended to the file names.
+Three GeoTIFFs are written to the same directory as the DEM:
 
-### Derive a watershed
+| File | Description |
+|------|-------------|
+| `<dem>_flow_dir_native.tif` | GRASS D8 flow direction |
+| `<dem>_flow_acc_native.tif` | Flow accumulation (masked to stream cells) |
+| `<dem>_streams_native.tif` | Stream network |
 
-From an (x, y) point in the same coordinate reference system as the rastrs,
-a watershed may be derived like this:
+When `resolutions` are provided, the suffix `native` is replaced with the resolution
+value (e.g. `_flow_dir_25.tif`):
+
+```python
+prepare_data("/path/to/dem.tif", resolutions=[15, 25, 50, 100, 200])
+```
+
+## Delineating a Watershed
+
+### Basic usage
 
 ```python
 from fastws.watershed import delineate
 
-
 x, y, area, geo = delineate(
     x,
     y,
-    "/path/to/my_streams.tif",
-    "/path/to/my_flow_dir.tif"
+    "/path/to/streams.tif",
+    "/path/to/flow_dir.tif",
 )
 ```
 
-When running `delineate` x and y are returned anew because they may be modified if the
-`snap` argument is set to `True` and a flow accumulation grid is included. The remaining
-returned variables from above include:
+`delineate` returns four values:
 
-* `area`, which is the watershed area in the raster crs; and
-* `geo`, which is a geojson MultiPolygon with the watershed boundary in the crs
-specified by the `out_crs` parameter, or the raster crs if it is not provided.
+| Return value | Description |
+|--------------|-------------|
+| `x` | X-coordinate of the outlet (may differ from the input if `snap=True`) |
+| `y` | Y-coordinate of the outlet (may differ from the input if `snap=True`) |
+| `area` | Watershed area in the units of the raster CRS |
+| `geo` | GeoJSON `MultiPolygon` of the watershed boundary |
 
-The above will:
+### Parameters
 
-1. Transform the point from the spatial reference provided by the `crs` argument (which may be an EPSG, WKT, or PROJ4
-string) into the same coordinate system as the raster.
-2. Move the input point downslope until it encounters a stream.
-3. Delineate a watershed above the point.
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `x` | `float` | — | X-coordinate of the outlet point |
+| `y` | `float` | — | Y-coordinate of the outlet point |
+| `stream_src` | `str` | — | Path to the stream raster |
+| `fd_src` | `str` | — | Path to the flow direction raster |
+| `xy_srs` | `str \| int` | `None` | CRS of the input point (EPSG, WKT, or PROJ4). Defaults to the raster CRS |
+| `snap` | `bool` | `False` | Move the point downslope until it reaches a stream cell. Requires `fa_src` |
+| `fa_src` | `str` | `None` | Path to the flow accumulation raster. Required when `snap=True` |
+| `out_crs` | `str \| int` | `None` | CRS for the output polygon. Defaults to the raster CRS |
+| `simplify` | `float` | `0` | Simplify the output geometry with this tolerance (0 = no simplification) |
+| `smooth` | `float` | `0` | Smooth the output geometry with this buffer distance (0 = no smoothing) |
+| `upstream_offset` | `list[int, int]` | `None` | Row/column offset of the upstream cell to use at a confluence, to avoid including all tributaries |
 
-### Variable-resolution delineation
+### Snapping to a stream
 
-Delineating using variable resolutions are useful for scale. For example, you could
-use a higher resolution to delineate smaller watersheds, and coarser resolutions to
-delineate larger watersheds for the sake of speed.
+When the input point is not exactly on a stream cell, set `snap=True` and provide the
+flow accumulation raster. The point is moved downslope until it hits a stream:
 
-To prepare for this you can use the `resolutions` argument in the `data` module.
+```python
+x, y, area, geo = delineate(
+    x,
+    y,
+    "/path/to/streams.tif",
+    "/path/to/flow_dir.tif",
+    snap=True,
+    fa_src="/path/to/flow_acc.tif",
+)
+```
 
-To use variable resolutions in a workflow, you could do something like this:
+### Reprojecting input/output
+
+Use `xy_srs` when the input point is in a different CRS than the rasters, and `out_crs`
+to return the watershed polygon in a specific CRS (e.g. WGS 84):
+
+```python
+x, y, area, geo = delineate(
+    -123.1207,   # longitude
+    49.2827,     # latitude
+    "/path/to/streams.tif",
+    "/path/to/flow_dir.tif",
+    xy_srs=4326,
+    snap=True,
+    fa_src="/path/to/flow_acc.tif",
+    out_crs=4326,
+)
+```
+
+## Batch Delineation from a Points File
+
+The `points` module delineates a watershed for every point in a vector file and writes
+the results to a new polygon file. Requires [fiona](https://fiona.readthedocs.io).
+
+```python
+from fastws.points import delineate_watersheds
+
+delineate_watersheds(
+    src="/path/to/outlets.gpkg",          # input point vector
+    dst="/path/to/watersheds.gpkg",       # output polygon vector
+    streams="/path/to/streams.tif",
+    flow_direction="/path/to/flow_dir.tif",
+    snap=True,
+    flow_accumulation="/path/to/flow_acc.tif",
+)
+```
+
+The output file inherits all properties from the input and adds three new fields:
+
+| Field | Description |
+|-------|-------------|
+| `fastws_snap_x` | Snapped outlet X-coordinate |
+| `fastws_snap_y` | Snapped outlet Y-coordinate |
+| `fastws_area` | Watershed area in the raster CRS units |
+
+## Variable-Resolution Delineation
+
+Delineating at variable resolutions improves performance at scale: use high resolution
+for small watersheds and coarser resolution for large ones. Prepare the multi-resolution
+grids with `prepare_data(dem, resolutions=[15, 25, 50, 100, 200])`, then:
 
 ```python
 from fastws.watershed import find_stream, delineate
 
-STEAMS_PATH = "/path/to/my_streams_{}.tif"
-DIRECTION_PATH = "/path/to/my_flow_dir_{}.tif"
-ACCUMULATION_PATH = "/path/to/my_flow_acc_{}.tif"
+STREAMS_PATH = "/path/to/dem_streams_{}.tif"
+DIRECTION_PATH = "/path/to/dem_flow_dir_{}.tif"
+ACCUMULATION_PATH = "/path/to/dem_flow_acc_{}.tif"
 
 X_COORD = 1.1
 Y_COORD = 2.2
 
 RESOLUTIONS = [15, 25, 50, 100, 200]
-# Minimum areas that indicate when to step up resolutions
+# Minimum accumulation areas (in raster CRS units²) that trigger stepping up to a coarser resolution
 AREA_THRESHOLDS = [1.8e8, 5e8, 2e9, 8e9]
 
-# Start by snapping to the stream of the highest-resolution raster
-# This returns the flow accumulation area, which is used in the next step
+# Snap to the stream at the finest resolution to get the accumulation area
 x, y, accum_area = find_stream(
     STREAMS_PATH.format(RESOLUTIONS[0]),
     DIRECTION_PATH.format(RESOLUTIONS[0]),
     ACCUMULATION_PATH.format(RESOLUTIONS[0]),
     X_COORD,
-    Y_COORD
+    Y_COORD,
 )
 
-# Find the resolution to use
+# Pick the appropriate resolution based on the upstream area
 resolution = RESOLUTIONS[
     next((i for i, a in enumerate(AREA_THRESHOLDS) if accum_area < a), -1)
 ]
 
-# Delineate the watershed, while snapping to ensure differences in resolution do not
-# affect the outlet placements
+# Delineate at the chosen resolution, snapping to account for grid differences
 x, y, area, geo = delineate(
     x,
     y,
-    STEAMS_PATH.format(resolution),
+    STREAMS_PATH.format(resolution),
     DIRECTION_PATH.format(resolution),
     snap=True,
-    ACCUMULATION_PATH.format(resolution),
+    fa_src=ACCUMULATION_PATH.format(resolution),
 )
 ```
 
