@@ -20,7 +20,7 @@ Build-time dependencies (required before installing):
 Optional dependencies:
 
 * [fiona](https://fiona.readthedocs.io) — required only for the `points` module (batch delineation from a vector file)
-* [GRASS GIS](https://grass.osgeo.org) + [hydro-tools](https://github.com/bluegeo/hydro-tools) — required only for the `data` module (DEM preparation)
+* [GRASS GIS](https://grass.osgeo.org) + [hydro-tools](https://github.com/bluegeo/hydro-tools) (+ dask, pulled by hydro-tools) — required only for the `data` module (DEM preparation)
 
 ## Installation
 
@@ -68,6 +68,15 @@ value (e.g. `_flow_dir_25.tif`):
 prepare_data("/path/to/dem.tif", resolutions=[15, 25, 50, 100, 200])
 ```
 
+## Raster Requirements and Assumptions
+
+`fastws` expects raster inputs to meet these conditions:
+
+* Inputs must be **tiled** GeoTIFFs (non-tiled rasters raise `ValueError: Input raster should be tiled`)
+* `stream_src`, `fd_src`, and `fa_src` should use the same grid definition (extent, resolution, and CRS)
+* Flow direction values are expected to use GRASS D8 encoding (`1..8`), with values `<= 0` treated as no-flow/off-map
+* Stream cells are identified as values that are not the stream raster `nodata`
+
 ## Delineating a Watershed
 
 ### Basic usage
@@ -80,6 +89,23 @@ x, y, area, geo = delineate(
     y,
     "/path/to/streams.tif",
     "/path/to/flow_dir.tif",
+)
+```
+
+### Finding the nearest stream first
+
+Use `find_stream` to move an outlet point downslope to the nearest stream and get
+its upstream accumulation area:
+
+```python
+from fastws.watershed import find_stream
+
+x, y, accum_area = find_stream(
+    "/path/to/streams.tif",
+    "/path/to/flow_dir.tif",
+    "/path/to/flow_acc.tif",
+    x,
+    y,
 )
 ```
 
@@ -131,8 +157,8 @@ to return the watershed polygon in a specific CRS (e.g. WGS 84):
 
 ```python
 x, y, area, geo = delineate(
-    -123.1207,   # longitude
-    49.2827,     # latitude
+    -123.1207,  # longitude
+    49.2827,  # latitude
     "/path/to/streams.tif",
     "/path/to/flow_dir.tif",
     xy_srs=4326,
@@ -142,17 +168,20 @@ x, y, area, geo = delineate(
 )
 ```
 
+`area` is always returned in the source raster CRS units, even when `out_crs` is set.
+
 ## Batch Delineation from a Points File
 
 The `points` module delineates a watershed for every point in a vector file and writes
 the results to a new polygon file. Requires [fiona](https://fiona.readthedocs.io).
+The input layer geometry type must be `Point`.
 
 ```python
 from fastws.points import delineate_watersheds
 
 delineate_watersheds(
-    src="/path/to/outlets.gpkg",          # input point vector
-    dst="/path/to/watersheds.gpkg",       # output polygon vector
+    src="/path/to/outlets.gpkg",  # input point vector
+    dst="/path/to/watersheds.gpkg",  # output polygon vector
     streams="/path/to/streams.tif",
     flow_direction="/path/to/flow_dir.tif",
     snap=True,

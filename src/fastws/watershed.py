@@ -18,7 +18,7 @@ def find_stream(
     y: float,
     xy_srs: Optional[Union[str, int]] = None,
 ) -> Tuple[float, float, float]:
-    """Search for the nearest stream cell and return the central coordinate.
+    """Find the nearest downstream stream cell from an input point.
 
     Args:
         stream_src (str): Raster source of stream data.
@@ -32,7 +32,7 @@ def find_stream(
         rasters. Defaults to None.
 
     Returns:
-        Tuple[float, float]: (x, y) coordinates that intersect a stream.
+        Tuple[float, float, float]: Snapped ``(x, y)`` and contributing area.
     """
     with Raster(stream_src) as streams, Raster(fd_src) as fd, Raster(fa_src) as fa:
         if xy_srs is not None:
@@ -86,7 +86,7 @@ def delineate(
     smooth: float = 0,
     upstream_offset: Optional[List[int]] = None,
 ) -> Tuple[float, float, float, dict]:
-    """Delineate the watershed on a stream above the point (x, y)
+    """Delineate the upstream watershed draining to a target point.
 
     Args:
         stream_src (str): Stream raster.
@@ -126,6 +126,14 @@ def delineate(
             x, y = transform_point(x, y, xy_srs, fd.proj)
 
         def next_delin(stack, window, avoid_tribs_offsets=None):
+            """Process one window and push contributing edge cells downstream.
+
+            Args:
+                stack (dict): Pending raster indices keyed by window.
+                window (Window): Window currently being delineated.
+                avoid_tribs_offsets (list, optional): Neighbor offsets to skip
+                    during the first pass at confluences.
+            """
             # Flow direction data over the extent of the current window
             data = fd[window]
 
@@ -273,6 +281,7 @@ def delineate(
             transformer = Transformer.from_crs(fd.proj, out_crs, always_xy=True)
 
             def transform_coords(coords):
+                """Transform polygon ring coordinates into ``out_crs``."""
                 wgs_pnts = transformer.transform(
                     [coord[0] for coord in coords[0]],
                     [coord[1] for coord in coords[0]],

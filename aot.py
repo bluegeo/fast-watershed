@@ -7,6 +7,17 @@ cc = CC("delineate")
 
 @cc.export("find_stream_task", "Tuple((b1, i8, i8))(b1[:, :], i2[:, :], i8, i8)")
 def find_stream_task(stream, fd, i, j):
+    """Traverse flow direction downstream until a stream cell is reached.
+
+    Args:
+        stream (np.ndarray): Boolean stream mask for the current window.
+        fd (np.ndarray): Flow-direction grid encoded with GRASS D8 values.
+        i (int): Starting row index.
+        j (int): Starting column index.
+
+    Returns:
+        Tuple[bool, int, int]: Found flag and terminal ``(i, j)`` index.
+    """
     directions = [
         [0, 0],
         [-1, 1],

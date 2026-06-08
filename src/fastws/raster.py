@@ -35,6 +35,15 @@ class WindowAccumulator:
     def __init__(
         self, top: float, left: float, csx: float, csy: float, init_window: Window
     ):
+        """Initialize coverage tracking for one or more raster windows.
+
+        Args:
+            top (float): Top y coordinate of the parent raster extent.
+            left (float): Left x coordinate of the parent raster extent.
+            csx (float): Cell size in the x direction.
+            csy (float): Cell size in the y direction.
+            init_window (Window): Initial raster window to allocate.
+        """
         self.top = top
         self.left = left
         self.csx = csx
@@ -56,9 +65,15 @@ class WindowAccumulator:
 
     @classmethod
     def from_raster(cls, raster: Raster, window: Window):
+        """Create an accumulator seeded from a ``Raster`` and window."""
         return cls(raster.top, raster.left, raster.csx, raster.csy, window)
 
     def add_window(self, window: Window):
+        """Expand the accumulator to include an additional raster window.
+
+        Args:
+            window (Window): Window to merge into the tracked extent.
+        """
         try:
             self.windows[window]
         except KeyError:
@@ -114,13 +129,16 @@ class WindowAccumulator:
             self.right_accum = new_right_accum
 
     def __getitem__(self, window: Window) -> np.ndarray:
+        """Return the accumulator view corresponding to a source window."""
         return self.a[self.windows[window]]
 
     def astype(self, dtype: np.dtype):
+        """Return the full accumulator array cast to ``dtype``."""
         return self.a.astype(dtype)
 
     @property
     def transform(self):
+        """Affine transform for the accumulated extent."""
         return rasterio.Affine(
             self.csx, 0.0, self.left_accum, 0.0, -self.csy, self.top_accum
         )
@@ -128,6 +146,14 @@ class WindowAccumulator:
 
 class Raster:
     def __init__(self, src: str):
+        """Open a tiled single-band raster for block-based processing.
+
+        Args:
+            src (str): Raster dataset path.
+
+        Raises:
+            ValueError: If the source raster is not internally tiled.
+        """
         self.ds = rasterio.open(src)
 
         if not self.ds.is_tiled:
@@ -136,41 +162,51 @@ class Raster:
         self.data_cache = {}
 
     def __enter__(self) -> Raster:
+        """Enter context-manager scope and return this wrapper."""
         return self
 
     def __exit__(self, a, b, c):
-        self.ds.close
+        """Close the underlying dataset when leaving context-manager scope."""
+        self.ds.close()
 
     @property
     def transform(self):
+        """Affine transform of the raster dataset."""
         return self.ds.transform
 
     @property
     def shape(self):
+        """Raster shape as ``(rows, cols)``."""
         return (self.ds.height, self.ds.width)
 
     @property
     def nodata(self):
+        """NoData value for band 1."""
         return self.ds.nodatavals[0]
 
     @property
     def proj(self):
+        """Coordinate reference system of the raster."""
         return self.ds.crs
 
     @property
     def left(self):
+        """Left x coordinate of the raster extent."""
         return self.ds.bounds.left
 
     @property
     def top(self):
+        """Top y coordinate of the raster extent."""
         return self.ds.bounds.top
 
     @property
     def csx(self):
+        """Cell size in the x direction."""
         return self.ds.res[0]
 
     @property
     def csy(self):
+        """Cell size in the y direction."""
         return self.ds.res[1]
 
     def window_extent(self, window: Window) -> SimpleNamespace:
@@ -190,6 +226,14 @@ class Raster:
         )
 
     def matches(self, other: Raster) -> bool:
+        """Check whether another raster has matching grid geometry and CRS.
+
+        Args:
+            other (Raster): Raster to compare against.
+
+        Returns:
+            bool: True if extents, shape, and CRS are equivalent.
+        """
         return all(
             [
                 all(

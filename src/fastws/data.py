@@ -18,6 +18,16 @@ except ImportError:
 
 
 def out_path(rpath: str, suffix: str, res: Union[str, float, int]) -> str:
+    """Build an output raster path derived from an input raster path.
+
+    Args:
+        rpath (str): Input raster path.
+        suffix (str): Output file suffix, such as ``flow_dir``.
+        res (Union[str, float, int]): Resolution label appended to the filename.
+
+    Returns:
+        str: Output path in the same directory as ``rpath``.
+    """
     return os.path.join(
         os.path.dirname(rpath),
         ".".join(os.path.basename(rpath).split(".")[:-1]) + f"_{suffix}_{res}.tif",
@@ -25,12 +35,19 @@ def out_path(rpath: str, suffix: str, res: Union[str, float, int]) -> str:
 
 
 def prepare_data(dem_path: str, resolutions: Optional[List[int]] = None):
-    """Generate the necessary files to be used in the Fast Watershed algorithm
+    """Generate flow-direction, stream, and flow-accumulation inputs.
 
     Args:
-        dem_path (str): Path to a DEM raster grid
-        resolutions (list, optional): Resolutions to output necessary files:
-        ex: `[15, 25, 50, 100, 200]`.
+        dem_path (str): Path to a DEM raster grid.
+        resolutions (list, optional): Optional output resolutions to process, for
+            example ``[15, 25, 50, 100, 200]``. If omitted, only the native
+            resolution is processed.
+
+    Returns:
+        None: Outputs are written to disk next to the DEM.
+
+    Notes:
+        Generated filenames follow ``<dem_name>_<product>_<resolution>.tif``.
         Defaults to None.
     """
     for res in resolutions if resolutions is not None else [None]:
