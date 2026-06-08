@@ -234,16 +234,12 @@ class Raster:
         Returns:
             bool: True if extents, shape, and CRS are equivalent.
         """
-        return all(
-            [
-                all(
-                    [np.isclose(a, b) for a, b in zip(self.ds.bounds, other.ds.bounds)]
-                ),
-                self.proj == other.proj,
-                self.ds.height == other.ds.height,
-                self.ds.width == other.ds.width,
-            ]
-        )
+        return all([
+            all([np.isclose(a, b) for a, b in zip(self.ds.bounds, other.ds.bounds)]),
+            self.proj == other.proj,
+            self.ds.height == other.ds.height,
+            self.ds.width == other.ds.width,
+        ])
 
     def coord_to_idx(self, x: float, y: float) -> Tuple[int, int]:
         """Convert a cartesian point to a raster grid index.
@@ -278,14 +274,12 @@ class Raster:
         def intersects(x: float, y: float, window: Window) -> bool:
             window_ext = self.window_extent(window)
 
-            return all(
-                [
-                    y <= window_ext.top,
-                    y >= window_ext.bottom,
-                    x >= window_ext.left,
-                    x <= window_ext.right,
-                ]
-            )
+            return all([
+                y <= window_ext.top,
+                y >= window_ext.bottom,
+                x >= window_ext.left,
+                x <= window_ext.right,
+            ])
 
         window = next(
             (

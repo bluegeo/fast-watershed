@@ -150,12 +150,10 @@ def delineate(
 
             # Edge cells are tracked to determine if adjacent windows are needed
             if len(edges) > 0:
-                edges = np.hstack(
-                    [
-                        np.asarray(edge_dirs).reshape((len(edge_dirs), 1)),
-                        np.asarray(edges),
-                    ]
-                )
+                edges = np.hstack([
+                    np.asarray(edge_dirs).reshape((len(edge_dirs), 1)),
+                    np.asarray(edges),
+                ])
 
                 top_slice = edges[:, 1] < 0
                 bottom_slice = edges[:, 1] == data.shape[0]
